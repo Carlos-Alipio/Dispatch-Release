@@ -29,3 +29,19 @@ class AiracRepository:
             raise ValueError(f"Aeródromo {icao} não encontrado no ciclo atual.")
             
         return dict(linha)
+
+    def buscar_pistas(self, icao: str) -> dict:
+        """Busca o aeródromo e devolve um dicionário (biblioteca) com todos os campos."""
+        cursor = self.conexao.cursor()
+        
+        cursor.execute("""
+            SELECT * 
+            FROM tbl_runways 
+            WHERE airport_identifier = ?
+        """, (icao.upper(),))
+
+        linha = cursor.fetchone()
+        if not linha:
+            raise ValueError(f"Aeródromo {icao} não encontrado no ciclo atual.")
+            
+        return dict(linha)
