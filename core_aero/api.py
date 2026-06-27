@@ -4,6 +4,8 @@ import folium
 
 from core_aero.repositories.airac_repo import AiracRepository
 from core_aero.domain.matematica import calcular_distancia_e_rumo
+from core_aero.domain.route_description import RouteService
+from pathlib import Path
 
 api = NinjaAPI(title="Aero SaaS API", version="1.0.0")
 
@@ -122,3 +124,214 @@ def renderizar_mapa_rota(request, icao_origem: str, icao_destino: str):
         
     except Exception as e:
         return HttpResponse(f"<h2>Erro ao gerar mapa tático: {str(e)}</h2>", status=400)
+
+
+@api.get("/rotas/mapa_completo/")
+def renderizar_mapa_rota_completa(request, route_string: str, initial_level: int = 350, origem: str = "", destino: str = ""):
+    """
+    Recebe uma string de rota, nível inicial, origem e destino via Query Parameters.
+    Renderiza um mapa com todos os fixos da rota e as linhas conectando-os.
+    """
+    try:
+        # Usa o mesmo banco de dados do AiracRepository
+        db_path = str(Path("core_aero/data/airac/airac_atual.s3db"))
+        route_service = RouteService(db_path=db_path)
+        
+        # Processa e valida a rota, transformando-a em segmentos
+        segments = route_service.process_and_validate_route(route_string, initial_level)
+        
+        if not segments:
+            return HttpResponse("<h2>Nenhum segmento retornado para a rota fornecida.</h2>", status=400)
+            
+        # Coletar waypoints únicos mantendo a ordem e buscar suas coordenadas
+        waypoints_ordered = []
+        for seg in segments:
+            wp_from = seg["from_waypoint"]
+            if not waypoints_ordered or waypoints_ordered[-1] != wp_from:
+                waypoints_ordered.append(wp_from)
+        
+        # Adicionar o último waypoint do último segmento
+        if segments:
+            waypoints_ordered.append(segments[-1]["to_waypoint"])
+            
+        coords_dict = {}
+        valid_waypoints = []
+        
+        def add_wp(w):
+            if not w: return
+            w = w.strip().upper()
+            if not valid_waypoints or valid_waypoints[-1] != w:
+                c = route_service.get_waypoint_coords(w)
+                if c:
+                    coords_dict[w] = c
+                    valid_waypoints.append(w)
+                    
+        # 1. Adiciona a origem
+        if origem:
+            add_wp(origem)
+            
+        # 2. Adiciona os fixos da rota
+        for wp in waypoints_ordered:
+            add_wp(wp)
+            
+        # 3. Adiciona o destino
+        if destino:
+            add_wp(destino)
+                
+        if not valid_waypoints:
+            return HttpResponse("<h2>Nenhum waypoint válido encontrado para desenhar no mapa.</h2>", status=400)
+            
+        # Centraliza o mapa no ponto médio da rota aproximadamente, ou no primeiro waypoint
+        primeiro_wp = valid_waypoints[0]
+        centro_lat, centro_lon = coords_dict[primeiro_wp]
+        
+        # Criamos o objeto do mapa
+        mapa = folium.Map(
+            location=[centro_lat, centro_lon], 
+            zoom_start=5,
+            tiles="OpenStreetMap"
+        )
+        
+        route_coords = []
+        # Adiciona marcadores para os waypoints válidos
+        for i, wp in enumerate(valid_waypoints):
+            lat, lon = coords_dict[wp]
+            route_coords.append([lat, lon])
+            
+            is_origin = (i == 0 and origem and wp == origem.strip().upper())
+            is_dest = (i == len(valid_waypoints) - 1 and destino and wp == destino.strip().upper())
+            
+            if is_origin:
+                popup = f"<b>{wp} (Origem)</b><br>Lat: {lat:.4f}<br>Lon: {lon:.4f}"
+                folium.Marker(
+                    location=[lat, lon],
+                    popup=popup,
+                    tooltip=wp,
+                    icon=folium.Icon(color="green", icon="plane-departure", prefix="fa")
+                ).add_to(mapa)
+            elif is_dest:
+                popup = f"<b>{wp} (Destino)</b><br>Lat: {lat:.4f}<br>Lon: {lon:.4f}"
+                folium.Marker(
+                    location=[lat, lon],
+                    popup=popup,
+                    tooltip=wp,
+                    icon=folium.Icon(color="red", icon="plane-arrival", prefix="fa")
+                ).add_to(mapa)
+            else:
+                # Fixo de rota: Círculo pequeno com o nome do fixo ao lado
+                html_icon = f"""
+                <div style="display: flex; align-items: center; transform: translate(-4px, -4px);">
+                    <div style="width: 8px; height: 8px; background-color: #8b5cf6; border-radius: 50%; border: 1px solid white; box-shadow: 0 0 2px rgba(0,0,0,0.5);"></div>
+                    <div style="margin-left: 5px; font-weight: bold; font-size: 11px; color: #0f172a; text-shadow: 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff;">{wp}</div>
+                </div>
+                """
+                folium.Marker(
+                    location=[lat, lon],
+                    icon=folium.DivIcon(html=html_icon)
+                ).add_to(mapa)
+            
+        # Desenha a linha da rota conectando os waypoints sequencialmente
+        folium.PolyLine(
+            locations=route_coords,
+            color="purple",
+            weight=4,
+            opacity=0.8,
+            tooltip=f"Rota: {route_string}"
+        ).add_to(mapa)
+        
+        # Retorna o HTML gerado pelo Folium
+        mapa_html = mapa._repr_html_()
+        return HttpResponse(mapa_html)
+        
+    except Exception as e:
+        return HttpResponse(f"<h2>Erro ao processar rota e gerar mapa: {str(e)}</h2>", status=400)
+
+
+@api.get("/rotas/ui/")
+def interface_mapa_rota(request):
+    """
+    Renderiza uma interface web amigável para digitação da rota e nível de voo.
+    Ao submeter, chama o endpoint /rotas/mapa_completo/.
+    """
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="pt-br">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Visualizador de Rotas Aéreas</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+            body { font-family: 'Inter', sans-serif; }
+        </style>
+    </head>
+    <body class="bg-slate-900 text-slate-200 min-h-screen flex items-center justify-center p-4">
+        <div class="bg-slate-800 p-8 rounded-2xl shadow-2xl max-w-lg w-full border border-slate-700">
+            <div class="flex items-center space-x-3 mb-6">
+                <svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <h1 class="text-2xl font-bold text-white">Planejamento de Rota</h1>
+            </div>
+            
+            <form action="/api/rotas/mapa_completo/" method="GET" class="space-y-6" target="_blank">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="origem" class="block text-sm font-medium text-slate-300 mb-2">Origem (ICAO)</label>
+                        <input 
+                            type="text" 
+                            id="origem" 
+                            name="origem" 
+                            class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase transition-all"
+                            placeholder="Ex: SBMO"
+                        >
+                    </div>
+                    <div>
+                        <label for="destino" class="block text-sm font-medium text-slate-300 mb-2">Destino (ICAO)</label>
+                        <input 
+                            type="text" 
+                            id="destino" 
+                            name="destino" 
+                            class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase transition-all"
+                            placeholder="Ex: SAEZ"
+                        >
+                    </div>
+                </div>
+
+                <div>
+                    <label for="route_string" class="block text-sm font-medium text-slate-300 mb-2">Descrição da Rota</label>
+                    <textarea 
+                        id="route_string" 
+                        name="route_string" 
+                        rows="4" 
+                        class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent uppercase transition-all"
+                        placeholder="Ex: OBLAX UZ21 VUNOX"
+                        required
+                    ></textarea>
+                    <p class="mt-2 text-xs text-slate-400">Separe os fixos e aerovias por espaços.</p>
+                </div>
+                
+                <div>
+                    <label for="initial_level" class="block text-sm font-medium text-slate-300 mb-2">Nível de Voo Inicial</label>
+                    <input 
+                        type="number" 
+                        id="initial_level" 
+                        name="initial_level" 
+                        value="350"
+                        class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        required
+                    >
+                </div>
+                
+                <button 
+                    type="submit" 
+                    class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-4 rounded-lg shadow-lg hover:shadow-blue-500/30 transition-all duration-200 flex justify-center items-center space-x-2"
+                >
+                    <span>Gerar Mapa Tático</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                </button>
+            </form>
+        </div>
+    </body>
+    </html>
+    """
+    return HttpResponse(html_content)
