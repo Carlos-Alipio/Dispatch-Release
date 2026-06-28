@@ -256,24 +256,24 @@ def renderizar_mapa_rota_completa(request, route_string: str, initial_level: int
                     icon=folium.Icon(color="red", icon="plane-arrival", prefix="fa")
                 ).add_to(mapa)
             else:
-                # Fixo de rota: Círculo pequeno com o nome do fixo ao lado
+                # Fixo de rota: Círculo vazado em magenta com o nome do fixo (Absoluto para centralizar perfeito)
                 html_icon = f"""
-                <div style="display: flex; align-items: center; transform: translate(-4px, -4px);">
-                    <div style="width: 8px; height: 8px; background-color: #8b5cf6; border-radius: 50%; border: 1px solid white; box-shadow: 0 0 2px rgba(0,0,0,0.5);"></div>
-                    <div style="margin-left: 5px; font-weight: bold; font-size: 11px; color: #0f172a; text-shadow: 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff;">{wp}</div>
+                <div style="position: relative;">
+                    <div style="position: absolute; left: -8px; top: -8px; width: 16px; height: 16px; background-color: white; border-radius: 50%; border: 4px solid #E056FD; box-sizing: border-box; box-shadow: 0 0 2px rgba(0,0,0,0.3);"></div>
+                    <div style="position: absolute; left: 12px; top: -8px; font-weight: bold; font-size: 12px; color: #0f172a; text-shadow: 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff; white-space: nowrap;">{wp}</div>
                 </div>
                 """
                 folium.Marker(
                     location=[lat, lon],
-                    icon=folium.DivIcon(html=html_icon)
+                    icon=folium.DivIcon(html=html_icon, icon_size=(0, 0), icon_anchor=(0, 0))
                 ).add_to(mapa)
             
         # Desenha a linha da rota conectando os waypoints sequencialmente
         folium.PolyLine(
             locations=route_coords,
-            color="purple",
-            weight=4,
-            opacity=0.8,
+            color="#E056FD",
+            weight=6,
+            opacity=0.9,
             tooltip=f"Rota: {route_string}"
         ).add_to(mapa)
         
