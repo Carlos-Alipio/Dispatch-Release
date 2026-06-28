@@ -3,8 +3,12 @@ from ninja import NinjaAPI, Schema
 import folium
 
 from core_aero.repositories.airac_repo import AiracRepository
-from core_aero.domain.matematica import calcular_distancia_e_rumo, calcular_rumo_magnetico
-from core_aero.domain.planejamento import extrair_instrucoes_rota, validar_segmentos_rota
+from core_aero.domain.planejamento import (
+    extrair_instrucoes_rota, 
+    validar_segmentos_rota, 
+    calcular_distancia_e_rumo, 
+    calcular_rumo_magnetico
+)
 from core_aero.domain.entidades import FixoRota
 from pathlib import Path
 
@@ -355,6 +359,7 @@ def interface_mapa_rota(request):
                         id="initial_level" 
                         name="initial_level" 
                         value="350"
+                        step="10"
                         class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                         required
                     >
