@@ -220,3 +220,6 @@ __marimo__/
 # SQLite
 *.s3db
 
+# Sistem prompts
+SYSTEM_PROMPT.md
+AGENT_INSTRUCTIONS.md
