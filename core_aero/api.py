@@ -3,8 +3,9 @@ from ninja import NinjaAPI, Schema
 import folium
 
 from core_aero.repositories.airac_repo import AiracRepository
-from core_aero.domain.matematica import calcular_distancia_e_rumo
-from core_aero.domain.route_description import RouteService
+from core_aero.domain.matematica import calcular_distancia_e_rumo, calcular_rumo_magnetico
+from core_aero.domain.planejamento import extrair_instrucoes_rota, validar_segmentos_rota
+from core_aero.domain.entidades import FixoRota
 from pathlib import Path
 
 api = NinjaAPI(title="Aero SaaS API", version="1.0.0")
@@ -133,12 +134,36 @@ def renderizar_mapa_rota_completa(request, route_string: str, initial_level: int
     Renderiza um mapa com todos os fixos da rota e as linhas conectando-os.
     """
     try:
-        # Usa o mesmo banco de dados do AiracRepository
-        db_path = str(Path("core_aero/data/airac/airac_atual.s3db"))
-        route_service = RouteService(db_path=db_path)
+        repo = AiracRepository(ciclo="atual")
         
-        # Processa e valida a rota, transformando-a em segmentos
-        segments = route_service.process_and_validate_route(route_string, initial_level)
+        # 1. Extrai instruções na matemática
+        instrucoes, level_map = extrair_instrucoes_rota(route_string, initial_level)
+        
+        # 2. Busca fixos na base de dados
+        fixos_brutos = []
+        for start_wp_raw, airway, end_wp_raw in instrucoes:
+            start = start_wp_raw.split('/')[0].strip()
+            end = end_wp_raw.split('/')[0].strip()
+            
+            if airway.upper() == 'DCT':
+                coord_start = repo.buscar_coordenadas(start)
+                coord_end = repo.buscar_coordenadas(end)
+                if not coord_start or not coord_end:
+                    raise ValueError(f"Coordenadas não encontradas para {start} ou {end}")
+                
+                mag_var = repo.buscar_variacao_magnetica(coord_start.latitude, coord_start.longitude)
+                course = calcular_rumo_magnetico(
+                    coord_start.latitude, coord_start.longitude, 
+                    coord_end.latitude, coord_end.longitude, 
+                    mag_var
+                )
+                fixos_brutos.append(FixoRota(id=start, airway_ref='DCT', is_reverse=False, course=None))
+                fixos_brutos.append(FixoRota(id=end, airway_ref='DCT', is_reverse=False, course=course))
+            else:
+                fixos_brutos.extend(repo.buscar_fixos_aerovia(start, airway, end))
+
+        # 3. Passa dados puros para o Domínio validar e processar
+        segments = validar_segmentos_rota(fixos_brutos, initial_level, level_map)
         
         if not segments:
             return HttpResponse("<h2>Nenhum segmento retornado para a rota fornecida.</h2>", status=400)
@@ -146,13 +171,13 @@ def renderizar_mapa_rota_completa(request, route_string: str, initial_level: int
         # Coletar waypoints únicos mantendo a ordem e buscar suas coordenadas
         waypoints_ordered = []
         for seg in segments:
-            wp_from = seg["from_waypoint"]
+            wp_from = seg.from_waypoint
             if not waypoints_ordered or waypoints_ordered[-1] != wp_from:
                 waypoints_ordered.append(wp_from)
         
         # Adicionar o último waypoint do último segmento
         if segments:
-            waypoints_ordered.append(segments[-1]["to_waypoint"])
+            waypoints_ordered.append(segments[-1].to_waypoint)
             
         coords_dict = {}
         valid_waypoints = []
@@ -161,9 +186,9 @@ def renderizar_mapa_rota_completa(request, route_string: str, initial_level: int
             if not w: return
             w = w.strip().upper()
             if not valid_waypoints or valid_waypoints[-1] != w:
-                c = route_service.get_waypoint_coords(w)
+                c = repo.buscar_coordenadas(w)
                 if c:
-                    coords_dict[w] = c
+                    coords_dict[w] = (c.latitude, c.longitude)
                     valid_waypoints.append(w)
                     
         # 1. Adiciona a origem

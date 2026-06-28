@@ -30,3 +30,11 @@ def calcular_distancia_e_rumo(lat1: float, lon1: float, lat2: float, lon2: float
         "distancia_nm": round(distancia_nm, 1),
         "rumo_verdadeiro_graus": round(rumo_verdadeiro, 1)
     }
+
+def calcular_rumo_magnetico(lat1: float, lon1: float, lat2: float, lon2: float, variacao_magnetica: float) -> float:
+    """
+    Calcula o rumo magnético usando o rumo verdadeiro e a variação magnética local.
+    """
+    dados = calcular_distancia_e_rumo(lat1, lon1, lat2, lon2)
+    rumo_verdadeiro = dados["rumo_verdadeiro_graus"]
+    return round((rumo_verdadeiro - variacao_magnetica) % 360, 2)
