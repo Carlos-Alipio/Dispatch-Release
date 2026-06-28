@@ -136,6 +136,19 @@ def renderizar_mapa_rota_completa(request, route_string: str, initial_level: int
     try:
         repo = AiracRepository(ciclo="atual")
         
+        # Garante que a origem e o destino façam parte da instrução da rota (como DCT)
+        # para que o motor de planejamento sempre processe esses pares iniciais e finais
+        origem_upper = origem.strip().upper() if origem else ""
+        destino_upper = destino.strip().upper() if destino else ""
+        
+        partes = route_string.strip().split()
+        if origem_upper and partes and partes[0].split('/')[0].strip() != origem_upper:
+            route_string = f"{origem_upper} DCT {route_string}"
+            
+        partes = route_string.strip().split()
+        if destino_upper and partes and partes[-1].split('/')[0].strip() != destino_upper:
+            route_string = f"{route_string} DCT {destino_upper}"
+        
         # 1. Extrai instruções na matemática
         instrucoes, level_map = extrair_instrucoes_rota(route_string, initial_level)
         

@@ -35,27 +35,13 @@ def extrair_instrucoes_rota(route_string: str, nivel_inicial: int) -> Tuple[List
     return instrucoes, level_map
 
 def is_course_odd(regras: List[RegraCruzeiro], course: float) -> bool:
-    if not regras:
-        return 0 <= course < 180
-
-    matching_rule = None
-    for r in regras:
-        c_from, c_to = r.course_from, r.course_to
-        if c_from <= c_to:
-            if c_from <= course <= c_to:
-                matching_rule = r
-                break
-        else:
-            if course >= c_from or course <= c_to:
-                matching_rule = r
-                break
-
-    if not matching_rule or matching_rule.cruise_level_from2 is None:
-        return 0 <= course < 180
-
-    lvl_from2 = matching_rule.cruise_level_from2
-    fl = lvl_from2 // 100
-    return (fl // 10) % 2 != 0
+    """
+    Determina se o rumo magnético exige nível ímpar.
+    Regra Semicircular Padrão: 
+    000° a 179° = Ímpar (ODD)
+    180° a 359° = Par (EVEN)
+    """
+    return 0 <= course < 180
 
 def validar_segmentos_rota(fixos_rota: List[FixoRota], nivel_inicial: int, level_map: Dict[str, int]) -> List[SegmentoValidado]:
     """
