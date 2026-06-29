@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 from typing import Optional, List
-from core_aero.domain.entidades import Aerodromo, AerodromoPrincipal, Coordenada, FixoRota, RegraCruzeiro
+from core_aero.domain.entidades import Aerodromo, AerodromoPrincipal, Coordenada, FixoRota, RegraCruzeiro, AuxilioNDB
 
 class AiracRepository:
     def __init__(self, ciclo: str = "atual"):
@@ -169,3 +169,32 @@ class AiracRepository:
                 regras_cruzeiro=regras
             ))
         return fixos
+
+    def buscar_ndbs_enroute(self) -> List[AuxilioNDB]:
+        cursor = self.conexao.cursor()
+        
+        # Fazemos a consulta pedindo apenas os NDBs que têm coordenada válida
+        cursor.execute("""
+            SELECT 
+                ndb_identifier,
+                ndb_name,
+                ndb_frequency,
+                ndb_latitude,
+                ndb_longitude
+            FROM tbl_enroute_ndbnavaids
+            WHERE ndb_latitude IS NOT NULL 
+            AND ndb_longitude IS NOT NULL
+        """)
+        
+        # Lei II: Nunca retorne o dado cru do banco. 
+        # Nós pegamos cada linha e "vestimos" com a roupa do Domínio (AuxilioNDB).
+        return [
+            AuxilioNDB(
+                identifier=row["ndb_identifier"],
+                nome=row["ndb_name"] if row["ndb_name"] else "",
+                frequencia_khz=row["ndb_frequency"],
+                lat_deg=row["ndb_latitude"],
+                lon_deg=row["ndb_longitude"]
+            )
+            for row in cursor.fetchall()
+        ]

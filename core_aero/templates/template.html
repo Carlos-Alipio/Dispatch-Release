@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,41 +11,61 @@
     <link href="https://unpkg.com/maplibre-gl@4.1.3/dist/maplibre-gl.css" rel="stylesheet" />
     <script src="https://unpkg.com/maplibre-gl@4.1.3/dist/maplibre-gl.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; }
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+        }
     </style>
 </head>
+
 <body class="bg-slate-900 h-screen flex flex-col font-sans">
-    
+
     <!-- Painel UI Flutuante de Planejamento Tático -->
-    <div class="absolute top-4 left-4 z-10 w-96 bg-slate-800 p-6 rounded-2xl shadow-2xl border border-slate-700 text-slate-200">
+    <div
+        class="absolute top-4 left-4 z-10 w-96 bg-slate-800 p-6 rounded-2xl shadow-2xl border border-slate-700 text-slate-200">
         <div class="flex items-center space-x-3 mb-6">
-            <svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z">
+                </path>
+            </svg>
             <h1 class="text-xl font-bold text-white">Planejamento Tático</h1>
         </div>
-        
+
         <form id="routeForm" class="space-y-4">
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="block text-xs font-medium text-slate-400 mb-1">Origem (ICAO)</label>
-                    <input type="text" id="origem" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white uppercase focus:outline-none focus:border-blue-500" placeholder="Ex: SBBR">
+                    <input type="text" id="origem"
+                        class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white uppercase focus:outline-none focus:border-blue-500"
+                        placeholder="Ex: SBBR">
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-400 mb-1">Destino (ICAO)</label>
-                    <input type="text" id="destino" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white uppercase focus:outline-none focus:border-blue-500" placeholder="Ex: SBSP">
+                    <input type="text" id="destino"
+                        class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white uppercase focus:outline-none focus:border-blue-500"
+                        placeholder="Ex: SBSP">
                 </div>
             </div>
 
             <div>
                 <label class="block text-xs font-medium text-slate-400 mb-1">Rota (Aerovias e Fixos)</label>
-                <textarea id="route_string" rows="3" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white uppercase focus:outline-none focus:border-blue-500" placeholder="OBLAX UZ21 VUNOX" required></textarea>
+                <textarea id="route_string" rows="3"
+                    class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white uppercase focus:outline-none focus:border-blue-500"
+                    placeholder="OBLAX UZ21 VUNOX" required></textarea>
             </div>
-            
+
             <div>
                 <label class="block text-xs font-medium text-slate-400 mb-1">Nível de Voo Inicial</label>
-                <input type="number" id="initial_level" value="350" step="10" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500" required>
+                <input type="number" id="initial_level" value="350" step="10"
+                    class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+                    required>
             </div>
-            
-            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg shadow-lg flex justify-center items-center space-x-2 transition-colors">
+
+            <button type="submit"
+                class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg shadow-lg flex justify-center items-center space-x-2 transition-colors">
                 <span>Plotar Rota</span>
             </button>
 
@@ -62,7 +83,7 @@
         const map = new maplibregl.Map({
             container: 'map',
             style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-            center: [-54.0, -15.0], 
+            center: [-54.0, -15.0],
             zoom: 4
         });
 
@@ -70,7 +91,7 @@
             // Fonte de dados estática da Camada 2 - apontando direto para a URL da API
             map.addSource('airac-aerodromos', {
                 type: 'geojson',
-                data: '/api/v1/geo/airac/aerodromos-principais' 
+                data: '/api/v1/geo/airac/aerodromos-principais'
             });
 
             // Usando uma camada de círculo (circle) para garantir a renderização na GPU
@@ -86,7 +107,7 @@
                     'circle-stroke-color': '#0f172a'
                 }
             });
-            
+
             // Opcional: Adiciona o nome do aeródromo em zoom alto
             map.addLayer({
                 id: 'camada-airac-aerodromos-nome',
@@ -107,10 +128,62 @@
             });
         });
 
+        map.on('load', async () => { // IMPORTANTE: adicione 'async' na função do 'load'
+
+            // ... (código dos aeródromos existente) ...
+
+            // --- CAMADA NDB ---
+            // 1. Carrega o SVG, renderiza num Canvas e extrai o ImageData para a GPU
+            const ndbImage = await new Promise((resolve, reject) => {
+                const img = new Image(32, 32);
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 32;
+                    canvas.height = 32;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, 32, 32);
+                    resolve(ctx.getImageData(0, 0, 32, 32));
+                };
+                img.onerror = reject;
+                img.src = '/static/core_aero/img/ndb-symbol.svg';
+            });
+            map.addImage('icone-ndb', ndbImage);
+
+            // 2. Cria a Fonte conectada ao endpoint do Django Ninja
+            map.addSource('airac-ndbs', {
+                type: 'geojson',
+                data: '/api/v1/geo/airac/ndbs'
+            });
+
+            // 3. Cria a Camada Visual (Junta os dados com o ícone)
+            map.addLayer({
+                id: 'camada-airac-ndbs',
+                type: 'symbol',
+                source: 'airac-ndbs',
+                layout: {
+                    'icon-image': 'icone-ndb',
+                    'icon-size': 1.0,           // Ajuste conforme o tamanho do seu SVG
+                    'icon-allow-overlap': true, // Nunca esconde o auxílio visualmente
+
+                    // Rótulo de texto
+                    'text-field': ['get', 'icao'], // Pega a propriedade "icao" do GeoJSON
+                    'text-anchor': 'left',         // Ancora o texto pela esquerda...
+                    'text-offset': [0.8, 0],       // ...e empurra um pouco para a direita (X=0.8, Y=0)
+                    'text-size': 10
+                },
+                paint: {
+                    'text-color': '#10b981',       // Cor verde para diferenciar de aeroportos (azul)
+                    'text-halo-color': '#0f172a',
+                    'text-halo-width': 1.5
+                }
+            });
+
+        });
+
         async function carregarRota(origem, destino, routeString, level) {
             const statusDiv = document.getElementById('statusMessage');
             statusDiv.classList.add('hidden');
-            
+
             try {
                 // Envia a instrução tática completa para a API
                 const params = new URLSearchParams({
@@ -121,12 +194,12 @@
                 });
 
                 const response = await fetch(`/api/rotas/geojson_completo/?${params.toString()}`);
-                
+
                 if (!response.ok) {
                     const err = await response.json();
                     throw new Error(err.erro || 'Erro ao planejar rota no backend.');
                 }
-                
+
                 const geojson = await response.json();
 
                 if (map.getSource('rota-source')) {
@@ -166,9 +239,9 @@
                             'circle-color': [
                                 'match',
                                 ['get', 'tipo'],
-                                'origem', '#22c55e', 
-                                'destino', '#ef4444', 
-                                '#ffffff' 
+                                'origem', '#22c55e',
+                                'destino', '#ef4444',
+                                '#ffffff'
                             ],
                             'circle-stroke-width': 2,
                             'circle-stroke-color': '#E056FD'
@@ -189,7 +262,7 @@
                             'text-offset': [0.8, 0], // Desloca para a direita para não encostar no raio da bolinha
                             'text-justify': 'left',
                             'text-size': 11,
-                            'text-optional': true 
+                            'text-optional': true
                         },
                         paint: {
                             'text-color': '#ffffff',
@@ -198,7 +271,7 @@
                         }
                     });
                 }
-                
+
                 // Centraliza o mapa dinamicamente com base nas coordenadas processadas
                 const bounds = new maplibregl.LngLatBounds();
                 geojson.features.forEach(feature => {
@@ -206,7 +279,7 @@
                         bounds.extend(feature.geometry.coordinates);
                     }
                 });
-                
+
                 if (!bounds.isEmpty()) {
                     map.fitBounds(bounds, { padding: { top: 80, bottom: 80, left: 420, right: 80 } }); // left 420 compensa o painel flutuante
                 }
@@ -228,4 +301,5 @@
         });
     </script>
 </body>
+
 </html>

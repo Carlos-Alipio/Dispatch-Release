@@ -50,3 +50,11 @@ class SegmentoValidado:
     course: Optional[float] = None
     min_altitude: Optional[int] = None
     max_altitude: Optional[int] = None
+
+@dataclass
+class AuxilioNDB:
+    identifier: str
+    nome: str
+    frequencia_khz: float
+    lat_deg: float
+    lon_deg: float

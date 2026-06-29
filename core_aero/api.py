@@ -230,3 +230,33 @@ def cockpit_ui(request):
     if template_path.exists():
         return HttpResponse(template_path.read_text(encoding="utf-8"), content_type="text/html")
     return HttpResponse("<h2>Template não encontrado.</h2>", status=404)
+
+# Não precisamos criar um Schema de saída novo, o FeatureCollection já serve para NDBs.
+
+@api.get("/v1/geo/airac/ndbs", response=FeatureCollection)
+def buscar_ndbs(request, response: HttpResponse):
+    """Retorna todos os NDBs de rota no formato estrito GeoJSON"""
+    
+    # 1. Cache na borda. O NDB não muda durante 28 dias.
+    response["Cache-Control"] = "public, max-age=2419200"
+    
+    # 2. Instanciamos o repositório e pedimos os dados limpos
+    repo = AiracRepository(ciclo="atual")
+    ndbs = repo.buscar_ndbs_enroute()
+    
+    # 3. Empacotamos no padrão GeoJSON (RFC 7946)
+    features = []
+    for ndb in ndbs:
+        features.append(
+            Feature(
+                geometry=PointGeometry(coordinates=[ndb.lon_deg, ndb.lat_deg]),
+                properties={
+                    "icao": ndb.identifier, # Chamamos de icao para padronizar com a renderização JS
+                    "nome": ndb.nome,
+                    "frequencia_khz": ndb.frequencia_khz,
+                    "tipo": "NDB"
+                }
+            )
+        )
+        
+    return FeatureCollection(features=features)
