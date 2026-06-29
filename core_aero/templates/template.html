@@ -66,6 +66,47 @@
             zoom: 4
         });
 
+        map.on('load', () => {
+            // Fonte de dados estática da Camada 2 - apontando direto para a URL da API
+            map.addSource('airac-aerodromos', {
+                type: 'geojson',
+                data: '/api/v1/geo/airac/aerodromos-principais' 
+            });
+
+            // Usando uma camada de círculo (circle) para garantir a renderização na GPU
+            // sem depender de imagens externas ou SVGs que podem falhar no Canvas.
+            map.addLayer({
+                id: 'camada-airac-aerodromos-circle',
+                type: 'circle',
+                source: 'airac-aerodromos',
+                paint: {
+                    'circle-radius': 4,
+                    'circle-color': '#38bdf8', // Azul claro
+                    'circle-stroke-width': 1,
+                    'circle-stroke-color': '#0f172a'
+                }
+            });
+            
+            // Opcional: Adiciona o nome do aeródromo em zoom alto
+            map.addLayer({
+                id: 'camada-airac-aerodromos-nome',
+                type: 'symbol',
+                source: 'airac-aerodromos',
+                minzoom: 6, // Só exibe os nomes quando der zoom para não poluir
+                layout: {
+                    'text-field': ['get', 'icao'],
+                    'text-size': 10,
+                    'text-anchor': 'top',
+                    'text-offset': [0, 0.5]
+                },
+                paint: {
+                    'text-color': '#ffffff',
+                    'text-halo-color': '#0f172a',
+                    'text-halo-width': 1
+                }
+            });
+        });
+
         async function carregarRota(origem, destino, routeString, level) {
             const statusDiv = document.getElementById('statusMessage');
             statusDiv.classList.add('hidden');
@@ -131,6 +172,29 @@
                             ],
                             'circle-stroke-width': 2,
                             'circle-stroke-color': '#E056FD'
+                        }
+                    });
+
+                    // Camada Symbol (Nomes dos Fixos)
+                    map.addLayer({
+                        id: 'camada-textos',
+                        type: 'symbol',
+                        source: 'rota-source',
+                        filter: ['==', '$type', 'Point'],
+                        layout: {
+                            'text-field': ['get', 'icao'],
+                            // Força a âncora a ser sempre 'left' no texto, 
+                            // cravando a renderização ESTRITAMENTE do lado direito da bolinha
+                            'text-anchor': 'left',
+                            'text-offset': [0.8, 0], // Desloca para a direita para não encostar no raio da bolinha
+                            'text-justify': 'left',
+                            'text-size': 11,
+                            'text-optional': true 
+                        },
+                        paint: {
+                            'text-color': '#ffffff',
+                            'text-halo-color': '#0f172a', // Borda escura restaurada
+                            'text-halo-width': 2
                         }
                     });
                 }

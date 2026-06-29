@@ -10,6 +10,14 @@ class Aerodromo:
     elevacao_ft: int
 
 @dataclass
+class AerodromoPrincipal:
+    icao: str
+    nome: str
+    lat_deg: float
+    lon_deg: float
+    elevacao_ft: int
+
+@dataclass
 class Coordenada:
     latitude: float
     longitude: float

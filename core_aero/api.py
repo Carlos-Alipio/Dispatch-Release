@@ -83,6 +83,35 @@ class FeatureCollection(Schema):
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: List[Feature]
 
+class GeoJsonAerodromosOut(Schema):
+    type: Literal["FeatureCollection"] = "FeatureCollection"
+    features: List[Feature]
+
+@api.get("/v1/geo/airac/aerodromos-principais", response=GeoJsonAerodromosOut)
+def buscar_aerodromos_principais(request, response: HttpResponse):
+    """
+    Retorna a infraestrutura fixa AIRAC (Camada 2) em GeoJSON estrito.
+    Injeta cache de borda (28 dias) para otimização extrema no Frontend.
+    """
+    response["Cache-Control"] = "public, max-age=2419200"
+    
+    repo = AiracRepository(ciclo="atual")
+    aerodromos = repo.buscar_aerodromos_ifr_hard()
+    
+    features = [
+        Feature(
+            geometry=PointGeometry(coordinates=[a.lon_deg, a.lat_deg]),
+            properties={
+                "icao": a.icao, 
+                "nome": a.nome, 
+                "elevacao_ft": a.elevacao_ft
+            }
+        )
+        for a in aerodromos
+    ]
+    
+    return GeoJsonAerodromosOut(features=features)
+
 @api.get("/rotas/geojson_completo/", response=FeatureCollection)
 def calcular_rota_geojson_completo(request, route_string: str, initial_level: int = 350, origem: str = "", destino: str = ""):
     """

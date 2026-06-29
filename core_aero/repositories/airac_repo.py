@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 from typing import Optional, List
-from core_aero.domain.entidades import Aerodromo, Coordenada, FixoRota, RegraCruzeiro
+from core_aero.domain.entidades import Aerodromo, AerodromoPrincipal, Coordenada, FixoRota, RegraCruzeiro
 
 class AiracRepository:
     def __init__(self, ciclo: str = "atual"):
@@ -41,6 +41,31 @@ class AiracRepository:
             longitude=linha["airport_ref_longitude"],
             elevacao_ft=linha["elevation"]
         )
+
+    def buscar_aerodromos_ifr_hard(self) -> List[AerodromoPrincipal]:
+        cursor = self.conexao.cursor()
+        cursor.execute("""
+            SELECT 
+                airport_identifier, 
+                airport_name,
+                airport_ref_latitude, 
+                airport_ref_longitude, 
+                elevation 
+            FROM tbl_airports 
+            WHERE ifr_capability = 'Y' 
+              AND longest_runway_surface_code = 'H'
+        """)
+        
+        return [
+            AerodromoPrincipal(
+                icao=row["airport_identifier"],
+                nome=row["airport_name"],
+                lat_deg=row["airport_ref_latitude"],
+                lon_deg=row["airport_ref_longitude"],
+                elevacao_ft=row["elevation"]
+            )
+            for row in cursor.fetchall()
+        ]
 
     def _clean_wp_name(self, wp: str) -> str:
         return wp.split('/')[0].strip()
