@@ -312,3 +312,28 @@ def buscar_fixos(request, response: HttpResponse):
         )
 
     return FeatureCollection(features=features)
+
+@api.get("/v1/geo/airac/aerovias", response=FeatureCollection)
+def buscar_aerovias(request, response: HttpResponse):
+    """Retorna todas as aerovias no formato estrito GeoJSON (LineStrings)"""
+    
+    response["Cache-Control"] = "public, max-age=2419200"
+    
+    repo = AiracRepository(ciclo="atual")
+    linhas = repo.buscar_linhas_aerovias()
+    
+    features = []
+    for linha in linhas:
+        features.append(
+            Feature(
+                geometry=LineStringGeometry(coordinates=linha.coordenadas),
+                properties={
+                    "icao": linha.route_identifier,
+                    "usage": linha.usage,
+                    "direction": linha.direction,
+                    "tipo": "AEROVIA"
+                }
+            )
+        )
+
+    return FeatureCollection(features=features)

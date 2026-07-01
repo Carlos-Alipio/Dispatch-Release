@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 from typing import Optional, List
-from core_aero.domain.entidades import Aerodromo, AerodromoPrincipal, Coordenada, FixoRota, RegraCruzeiro, AuxilioNDB, AuxilioVOR, AuxilioFixo
+from core_aero.domain.entidades import Aerodromo, AerodromoPrincipal, Coordenada, FixoRota, RegraCruzeiro, AuxilioNDB, AuxilioVOR, AuxilioFixo, AeroviaLinha
 
 class AiracRepository:
     def __init__(self, ciclo: str = "atual"):
@@ -251,3 +251,61 @@ class AiracRepository:
             )
             for row in cursor.fetchall()
         ]
+
+    def buscar_linhas_aerovias(self) -> List[AeroviaLinha]:
+        cursor = self.conexao.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                route_identifier,
+                flightlevel,
+                direction_restriction,
+                waypoint_latitude,
+                waypoint_longitude
+            FROM tbl_enroute_airways
+            WHERE waypoint_latitude IS NOT NULL 
+              AND waypoint_longitude IS NOT NULL
+            ORDER BY route_identifier, seqno ASC
+        """)
+        
+        linhas = []
+        current_route = None
+        current_coords = []
+        current_usage = 'BOTH'
+        current_direction = 'TWO-WAY'
+        
+        for row in cursor.fetchall():
+            route = row["route_identifier"]
+            lat = row["waypoint_latitude"]
+            lon = row["waypoint_longitude"]
+            fl = row["flightlevel"]
+            d_res = row["direction_restriction"]
+            
+            # Simplificando H -> HI, L -> LO, B -> BOTH
+            usage = 'HI' if fl == 'H' else 'LO' if fl == 'L' else 'BOTH'
+            direction = 'ONE-WAY' if d_res in ('F', 'B') else 'TWO-WAY'
+            
+            if route != current_route:
+                if current_route is not None and len(current_coords) > 1:
+                    linhas.append(AeroviaLinha(
+                        route_identifier=current_route,
+                        usage=current_usage,
+                        direction=current_direction,
+                        coordenadas=current_coords
+                    ))
+                current_route = route
+                current_coords = []
+                current_usage = usage
+                current_direction = direction
+                
+            current_coords.append([lon, lat])
+            
+        if current_route is not None and len(current_coords) > 1:
+            linhas.append(AeroviaLinha(
+                route_identifier=current_route,
+                usage=current_usage,
+                direction=current_direction,
+                coordenadas=current_coords
+            ))
+            
+        return linhas

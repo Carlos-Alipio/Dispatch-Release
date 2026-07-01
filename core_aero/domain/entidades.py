@@ -73,3 +73,10 @@ class AuxilioFixo:
     usage: str
     lat_deg: float
     lon_deg: float
+
+@dataclass
+class AeroviaLinha:
+    route_identifier: str
+    usage: str          # 'HI' ou 'LO'
+    direction: str      # 'ONE-WAY' ou 'TWO-WAY'
+    coordenadas: List[List[float]] # Lista de [lon, lat] para o LineString

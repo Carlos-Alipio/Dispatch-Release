@@ -73,6 +73,14 @@
         </form>
     </div>
 
+    <!-- Filtro de Aerovias -->
+    <div class="absolute bottom-6 right-6 z-10 bg-slate-800 p-2 rounded-xl shadow-2xl border border-slate-700 flex space-x-2">
+        <button id="btn-awys-hi" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2 px-4 rounded transition-colors border border-slate-600">Alta (HI)</button>
+        <button id="btn-awys-lo" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2 px-4 rounded transition-colors border border-slate-600">Baixa (LO)</button>
+        <button id="btn-awys-both" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2 px-4 rounded transition-colors shadow-lg">Ambas</button>
+    </div>
+
+
     <!-- Container do Mapa WebGL -->
     <main class="flex-grow relative">
         <div id="map" class="absolute inset-0 w-full h-full"></div>
@@ -258,9 +266,98 @@
                 paint: {
                     'text-color': '#a855f7', // Cor roxa (purple-500)
                     'text-halo-color': '#ffffff',
-                    'text-halo-width': 1.5
+                    'text-halo-width': 1.5,
+                    'icon-halo-color': '#f2f4f6', 
+                    'icon-halo-width': 4
                 }
             });
+
+            // --- CAMADA AEROVIAS ---
+            const arrowImage = await new Promise((resolve, reject) => {
+                const img = new Image(16, 16);
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 16; canvas.height = 16;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, 16, 16);
+                    resolve(ctx.getImageData(0, 0, 16, 16));
+                };
+                img.onerror = reject;
+                img.src = '/static/core_aero/img/seta-symbol.svg';
+            });
+            map.addImage('icone-seta', arrowImage);
+
+            map.addSource('airac-aerovias', {
+                type: 'geojson',
+                data: '/api/v1/geo/airac/aerovias'
+            });
+
+            // Para as aerovias ficarem por baixo de tudo (abaixo dos labels de mapa, se possível),
+            // mas o MapLibre as adiciona por cima de tudo no topo da lista se não houver beforeId.
+            // Aqui elas ficarão por cima dos fixos se colocadas DEPOIS. 
+            // O ideal é adicionar as aerovias ANTES dos fixos, NDBs e VORs para que os halos funcionem.
+            // Para não quebrar a ordem visual atual, vamos reposicioná-las para trás referenciando o id da camada de fixos
+            map.addLayer({
+                id: 'camada-aerovias-linha',
+                type: 'line',
+                source: 'airac-aerovias',
+                minzoom: 5,
+                layout: {
+                    'line-join': 'round',
+                    'line-cap': 'round'
+                },
+                paint: {
+                    'line-color': [
+                        'match',
+                        ['get', 'usage'],
+                        'HI', '#94a3b8',
+                        'LO', '#cbd5e1',
+                        '#cbd5e1'
+                    ],
+                    'line-width': 1.5,
+                    'line-opacity': 0.8
+                }
+            }, 'camada-airac-fixos'); // O 2º parâmetro insere a camada ANTES da camada-airac-fixos
+
+            map.addLayer({
+                id: 'camada-aerovias-direcao',
+                type: 'symbol',
+                source: 'airac-aerovias',
+                minzoom: 6,
+                filter: ['==', ['get', 'direction'], 'ONE-WAY'],
+                layout: {
+                    'symbol-placement': 'line',
+                    'symbol-spacing': 80,
+                    'icon-image': 'icone-seta',
+                    'icon-size': 0.8,
+                    'icon-keep-upright': false
+                }
+            }, 'camada-airac-fixos');
+
+            // --- LÓGICA DE FILTROS ---
+            const filterHi = ['==', ['get', 'usage'], 'HI'];
+            const filterLo = ['==', ['get', 'usage'], 'LO'];
+            const filterBoth = ['has', 'usage'];
+
+            window.applyAirwayFilter = function(filterCondition, activeBtnId) {
+                map.setFilter('camada-aerovias-linha', filterCondition);
+                map.setFilter('camada-aerovias-direcao', ['all', filterCondition, ['==', ['get', 'direction'], 'ONE-WAY']]);
+
+                ['btn-awys-hi', 'btn-awys-lo', 'btn-awys-both'].forEach(id => {
+                    const btn = document.getElementById(id);
+                    if (id === activeBtnId) {
+                        btn.classList.replace('bg-slate-700', 'bg-blue-600');
+                        btn.classList.replace('hover:bg-slate-600', 'hover:bg-blue-500');
+                    } else {
+                        btn.classList.replace('bg-blue-600', 'bg-slate-700');
+                        btn.classList.replace('hover:bg-blue-500', 'hover:bg-slate-600');
+                    }
+                });
+            };
+
+            document.getElementById('btn-awys-hi').addEventListener('click', () => applyAirwayFilter(filterHi, 'btn-awys-hi'));
+            document.getElementById('btn-awys-lo').addEventListener('click', () => applyAirwayFilter(filterLo, 'btn-awys-lo'));
+            document.getElementById('btn-awys-both').addEventListener('click', () => applyAirwayFilter(filterBoth, 'btn-awys-both'));
 
         });
 
