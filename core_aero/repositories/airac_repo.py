@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 from typing import Optional, List
-from core_aero.domain.entidades import Aerodromo, AerodromoPrincipal, Coordenada, FixoRota, RegraCruzeiro, AuxilioNDB
+from core_aero.domain.entidades import Aerodromo, AerodromoPrincipal, Coordenada, FixoRota, RegraCruzeiro, AuxilioNDB, AuxilioVOR
 
 class AiracRepository:
     def __init__(self, ciclo: str = "atual"):
@@ -195,6 +195,35 @@ class AiracRepository:
                 frequencia_khz=row["ndb_frequency"],
                 lat_deg=row["ndb_latitude"],
                 lon_deg=row["ndb_longitude"]
+            )
+            for row in cursor.fetchall()
+        ]
+
+    def buscar_vors(self) -> List[AuxilioVOR]:
+        cursor = self.conexao.cursor()
+        
+        # Fazemos a consulta pedindo apenas os VORs que têm coordenada válida
+        cursor.execute("""
+            SELECT 
+                vor_identifier,
+                vor_name,
+                vor_frequency,
+                vor_latitude,
+                vor_longitude
+            FROM tbl_vhfnavaids
+            WHERE vor_latitude IS NOT NULL 
+            AND vor_longitude IS NOT NULL
+        """)
+        
+        # Lei II: Nunca retorne o dado cru do banco. 
+        # Nós pegamos cada linha e "vestimos" com a roupa do Domínio (AuxilioNDB).
+        return [
+            AuxilioVOR(
+                identifier=row["vor_identifier"],
+                nome=row["vor_name"] if row["vor_name"] else "",
+                frequencia_mhz=row["vor_frequency"],
+                lat_deg=row["vor_latitude"],
+                lon_deg=row["vor_longitude"]
             )
             for row in cursor.fetchall()
         ]

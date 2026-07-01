@@ -100,6 +100,7 @@
                 id: 'camada-airac-aerodromos-circle',
                 type: 'circle',
                 source: 'airac-aerodromos',
+                minzoom: 4,
                 paint: {
                     'circle-radius': 4,
                     'circle-color': '#38bdf8', // Azul claro
@@ -113,10 +114,10 @@
                 id: 'camada-airac-aerodromos-nome',
                 type: 'symbol',
                 source: 'airac-aerodromos',
-                minzoom: 6, // Só exibe os nomes quando der zoom para não poluir
+                minzoom: 4, // Exibe os aeródromos antes (zoom 4)
                 layout: {
                     'text-field': ['get', 'icao'],
-                    'text-size': 10,
+                    'text-size': 13, // Letra maior para os aeródromos
                     'text-anchor': 'top',
                     'text-offset': [0, 0.5]
                 },
@@ -160,6 +161,7 @@
                 id: 'camada-airac-ndbs',
                 type: 'symbol',
                 source: 'airac-ndbs',
+                minzoom: 6,
                 layout: {
                     'icon-image': 'icone-ndb',
                     'icon-size': 1.0,           // Ajuste conforme o tamanho do seu SVG
@@ -168,12 +170,53 @@
                     // Rótulo de texto
                     'text-field': ['get', 'icao'], // Pega a propriedade "icao" do GeoJSON
                     'text-anchor': 'left',         // Ancora o texto pela esquerda...
-                    'text-offset': [0.8, 0],       // ...e empurra um pouco para a direita (X=0.8, Y=0)
-                    'text-size': 10
+                    'text-offset': [1.5, 0],       // ...e empurra um pouco mais para a direita
+                    'text-size': 12
                 },
                 paint: {
                     'text-color': '#10b981',       // Cor verde para diferenciar de aeroportos (azul)
-                    'text-halo-color': '#0f172a',
+                    'text-halo-color': '#ffffff',
+                    'text-halo-width': 1.5
+                }
+            });
+            // --- CAMADA VOR ---
+            const vorImage = await new Promise((resolve, reject) => {
+                const img = new Image(32, 32);
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 32;
+                    canvas.height = 32;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, 32, 32);
+                    resolve(ctx.getImageData(0, 0, 32, 32));
+                };
+                img.onerror = reject;
+                img.src = '/static/core_aero/img/vor-symbol.svg';
+            });
+            map.addImage('icone-vor', vorImage);
+
+            map.addSource('airac-vors', {
+                type: 'geojson',
+                data: '/api/v1/geo/airac/vors'
+            });
+
+            map.addLayer({
+                id: 'camada-airac-vors',
+                type: 'symbol',
+                source: 'airac-vors',
+                minzoom: 6,
+                layout: {
+                    'icon-image': 'icone-vor',
+                    'icon-size': 1.0,
+                    'icon-allow-overlap': true,
+                    'text-field': ['get', 'icao'],
+                    'text-anchor': 'left',
+                    'text-offset': [1.5, 0],
+                    'text-size': 12
+                },
+                paint: {
+                    'text-color': '#3b82f6', // Cor azul específica para os VORs
+                    'text-halo-color': '#ffffff',
                     'text-halo-width': 1.5
                 }
             });

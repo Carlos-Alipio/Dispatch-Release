@@ -58,3 +58,11 @@ class AuxilioNDB:
     frequencia_khz: float
     lat_deg: float
     lon_deg: float
+
+@dataclass
+class AuxilioVOR:
+    identifier: str
+    nome: str
+    frequencia_mhz: float
+    lat_deg: float
+    lon_deg: float

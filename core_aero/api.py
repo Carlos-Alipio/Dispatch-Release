@@ -260,3 +260,31 @@ def buscar_ndbs(request, response: HttpResponse):
         )
         
     return FeatureCollection(features=features)
+
+@api.get("/v1/geo/airac/vors", response=FeatureCollection)
+def buscar_vors(request, response: HttpResponse):
+    """Retorna todos os VORs de rota no formato estrito GeoJSON"""
+    
+    # 1. Cache na borda. O VOR não muda durante 28 dias.
+    response["Cache-Control"] = "public, max-age=2419200"
+    
+    # 2. Instanciamos o repositório e pedimos os dados limpos
+    repo = AiracRepository(ciclo="atual")
+    vors = repo.buscar_vors()
+    
+    # 3. Empacotamos no padrão GeoJSON (RFC 7946)
+    features = []
+    for vor in vors:
+        features.append(
+            Feature(
+                geometry=PointGeometry(coordinates=[vor.lon_deg, vor.lat_deg]),
+                properties={
+                    "icao": vor.identifier, # Chamamos de icao para padronizar com a renderização JS
+                    "nome": vor.nome,
+                    "frequencia_mhz": vor.frequencia_mhz,
+                    "tipo": "VOR"
+                }
+            )
+        )
+
+    return FeatureCollection(features=features)
