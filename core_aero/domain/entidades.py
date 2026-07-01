@@ -66,3 +66,10 @@ class AuxilioVOR:
     frequencia_mhz: float
     lat_deg: float
     lon_deg: float
+
+@dataclass
+class AuxilioFixo:
+    identifier: str
+    usage: str
+    lat_deg: float
+    lon_deg: float

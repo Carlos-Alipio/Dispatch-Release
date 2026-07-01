@@ -288,3 +288,27 @@ def buscar_vors(request, response: HttpResponse):
         )
 
     return FeatureCollection(features=features)
+
+@api.get("/v1/geo/airac/fixos", response=FeatureCollection)
+def buscar_fixos(request, response: HttpResponse):
+    """Retorna todos os Fixos de rota no formato estrito GeoJSON"""
+    
+    response["Cache-Control"] = "public, max-age=2419200"
+    
+    repo = AiracRepository(ciclo="atual")
+    fixos = repo.buscar_fixos_mapa()
+    
+    features = []
+    for fixo in fixos:
+        features.append(
+            Feature(
+                geometry=PointGeometry(coordinates=[fixo.lon_deg, fixo.lat_deg]),
+                properties={
+                    "icao": fixo.identifier,
+                    "usage": fixo.usage,
+                    "tipo": "FIXO"
+                }
+            )
+        )
+
+    return FeatureCollection(features=features)

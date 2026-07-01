@@ -220,6 +220,47 @@
                     'text-halo-width': 1.5
                 }
             });
+            // --- CAMADA FIXO ---
+            const fixoImage = await new Promise((resolve, reject) => {
+                const img = new Image(32, 32);
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 32;
+                    canvas.height = 32;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, 32, 32);
+                    resolve(ctx.getImageData(0, 0, 32, 32));
+                };
+                img.onerror = reject;
+                img.src = '/static/core_aero/img/fixo-symbol.svg';
+            });
+            map.addImage('icone-fixo', fixoImage);
+
+            map.addSource('airac-fixos', {
+                type: 'geojson',
+                data: '/api/v1/geo/airac/fixos'
+            });
+
+            map.addLayer({
+                id: 'camada-airac-fixos',
+                type: 'symbol',
+                source: 'airac-fixos',
+                minzoom: 7, // Fixos são extremamente numerosos, zoom maior é melhor
+                layout: {
+                    'icon-image': 'icone-fixo',
+                    'icon-size': 0.8, // Triângulo um pouco menor
+                    'icon-allow-overlap': true,
+                    'text-field': ['get', 'icao'],
+                    'text-anchor': 'left',
+                    'text-offset': [1.2, 0],
+                    'text-size': 11
+                },
+                paint: {
+                    'text-color': '#a855f7', // Cor roxa (purple-500)
+                    'text-halo-color': '#ffffff',
+                    'text-halo-width': 1.5
+                }
+            });
 
         });
 

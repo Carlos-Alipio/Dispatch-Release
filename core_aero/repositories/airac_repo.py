@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 from typing import Optional, List
-from core_aero.domain.entidades import Aerodromo, AerodromoPrincipal, Coordenada, FixoRota, RegraCruzeiro, AuxilioNDB, AuxilioVOR
+from core_aero.domain.entidades import Aerodromo, AerodromoPrincipal, Coordenada, FixoRota, RegraCruzeiro, AuxilioNDB, AuxilioVOR, AuxilioFixo
 
 class AiracRepository:
     def __init__(self, ciclo: str = "atual"):
@@ -224,6 +224,30 @@ class AiracRepository:
                 frequencia_mhz=row["vor_frequency"],
                 lat_deg=row["vor_latitude"],
                 lon_deg=row["vor_longitude"]
+            )
+            for row in cursor.fetchall()
+        ]
+
+    def buscar_fixos_mapa(self) -> List[AuxilioFixo]:
+        cursor = self.conexao.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                waypoint_identifier,
+                waypoint_usage,
+                waypoint_latitude,
+                waypoint_longitude
+            FROM tbl_enroute_waypoints
+            WHERE waypoint_latitude IS NOT NULL 
+            AND waypoint_longitude IS NOT NULL
+        """)
+        
+        return [
+            AuxilioFixo(
+                identifier=row["waypoint_identifier"],
+                usage=row["waypoint_usage"] if row["waypoint_usage"] else "",
+                lat_deg=row["waypoint_latitude"],
+                lon_deg=row["waypoint_longitude"]
             )
             for row in cursor.fetchall()
         ]
