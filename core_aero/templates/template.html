@@ -334,6 +334,26 @@
                 }
             }, 'camada-airac-fixos');
 
+            map.addLayer({
+                id: 'camada-aerovias-nome',
+                type: 'symbol',
+                source: 'airac-aerovias',
+                minzoom: 6,
+                layout: {
+                    'symbol-placement': 'line',
+                    'symbol-spacing': 200, // Repete o nome ao longo da linha
+                    'text-field': ['get', 'icao'],
+                    'text-size': 11,
+                    'text-keep-upright': true,
+                    'text-offset': [0, -1] // Coloca o nome levemente acima da linha
+                },
+                paint: {
+                    'text-color': '#64748b',
+                    'text-halo-color': '#ffffff',
+                    'text-halo-width': 1.5
+                }
+            }, 'camada-airac-fixos');
+
             // --- LÓGICA DE FILTROS ---
             const filterHi = ['==', ['get', 'usage'], 'HI'];
             const filterLo = ['==', ['get', 'usage'], 'LO'];
@@ -341,6 +361,7 @@
 
             window.applyAirwayFilter = function(filterCondition, activeBtnId) {
                 map.setFilter('camada-aerovias-linha', filterCondition);
+                map.setFilter('camada-aerovias-nome', filterCondition); // Aplica o filtro no nome também
                 map.setFilter('camada-aerovias-direcao', ['all', filterCondition, ['==', ['get', 'direction'], 'ONE-WAY']]);
 
                 ['btn-awys-hi', 'btn-awys-lo', 'btn-awys-both'].forEach(id => {
