@@ -74,10 +74,16 @@
     </div>
 
     <!-- Filtro de Aerovias -->
-    <div class="absolute bottom-6 right-6 z-10 bg-slate-800 p-2 rounded-xl shadow-2xl border border-slate-700 flex space-x-2">
-        <button id="btn-awys-hi" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2 px-4 rounded transition-colors border border-slate-600">Alta (HI)</button>
-        <button id="btn-awys-lo" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2 px-4 rounded transition-colors border border-slate-600">Baixa (LO)</button>
-        <button id="btn-awys-both" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2 px-4 rounded transition-colors shadow-lg">Ambas</button>
+    <div
+        class="absolute bottom-6 right-6 z-10 bg-slate-800 p-2 rounded-xl shadow-2xl border border-slate-700 flex space-x-2">
+        <button id="btn-awys-hi"
+            class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2 px-4 rounded transition-colors border border-slate-600">Alta
+            (HI)</button>
+        <button id="btn-awys-lo"
+            class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2 px-4 rounded transition-colors border border-slate-600">Baixa
+            (LO)</button>
+        <button id="btn-awys-both"
+            class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2 px-4 rounded transition-colors shadow-lg">Ambas</button>
     </div>
 
 
@@ -267,7 +273,7 @@
                     'text-color': '#a855f7', // Cor roxa (purple-500)
                     'text-halo-color': '#ffffff',
                     'text-halo-width': 1.5,
-                    'icon-halo-color': '#f2f4f6', 
+                    'icon-halo-color': '#f2f4f6',
                     'icon-halo-width': 4
                 }
             });
@@ -359,7 +365,7 @@
             const filterLo = ['==', ['get', 'usage'], 'LO'];
             const filterBoth = ['has', 'usage'];
 
-            window.applyAirwayFilter = function(filterCondition, activeBtnId) {
+            window.applyAirwayFilter = function (filterCondition, activeBtnId) {
                 map.setFilter('camada-aerovias-linha', filterCondition);
                 map.setFilter('camada-aerovias-nome', filterCondition); // Aplica o filtro no nome também
                 map.setFilter('camada-aerovias-direcao', ['all', filterCondition, ['==', ['get', 'direction'], 'ONE-WAY']]);
