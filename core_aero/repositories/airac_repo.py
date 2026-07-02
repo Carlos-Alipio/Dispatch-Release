@@ -1,7 +1,8 @@
 import sqlite3
 from pathlib import Path
 from typing import Optional, List
-from core_aero.domain.entidades import Aerodromo, AerodromoPrincipal, Coordenada, FixoRota, RegraCruzeiro, AuxilioNDB, AuxilioVOR, AuxilioFixo, AeroviaLinha
+from core_aero.domain.entidades import Aerodromo, AerodromoPrincipal, Coordenada, FixoRota, RegraCruzeiro, AuxilioNDB, AuxilioVOR, AuxilioFixo, AeroviaLinha, AreaRestrita, AreaFir
+import math
 
 class AiracRepository:
     def __init__(self, ciclo: str = "atual"):
@@ -309,3 +310,211 @@ class AiracRepository:
             ))
             
         return linhas
+
+    def _gerar_circulo(self, lat: float, lon: float, radius_nm: float, num_points: int = 36) -> List[List[float]]:
+        # Earth radius in NM is ~3440.065
+        earth_radius_nm = 3440.065
+        coords = []
+        lat_rad = math.radians(lat)
+        lon_rad = math.radians(lon)
+        d_rad = radius_nm / earth_radius_nm
+
+        for i in range(num_points):
+            bearing = math.radians(float(i * 360 / num_points))
+            lat_point = math.asin(math.sin(lat_rad) * math.cos(d_rad) + 
+                                  math.cos(lat_rad) * math.sin(d_rad) * math.cos(bearing))
+            lon_point = lon_rad + math.atan2(math.sin(bearing) * math.sin(d_rad) * math.cos(lat_rad), 
+                                             math.cos(d_rad) - math.sin(lat_rad) * math.sin(lat_point))
+            coords.append([math.degrees(lon_point), math.degrees(lat_point)])
+        
+        # Close the polygon
+        coords.append(coords[0])
+        return coords
+
+    def _ensure_ccw(self, coords: List[List[float]]) -> List[List[float]]:
+        area = 0.0
+        for i in range(len(coords) - 1):
+            x1, y1 = coords[i]
+            x2, y2 = coords[i+1]
+            area += (x1 * y2 - x2 * y1)
+        if area < 0:
+            return coords[::-1]
+        return coords
+
+    def buscar_areas_restritas(self) -> List[AreaRestrita]:
+        cursor = self.conexao.cursor()
+        
+        # O banco de dados mantem a sequência de bordas na ordem de inserção (rowid).
+        # Agrupar por nomes que se repetem embaralha tudo. Devemos ler ordenado por rowid.
+        # Filtramos apenas os tipos solicitados: D, R, P.
+        cursor.execute("""
+            SELECT 
+                restrictive_airspace_designation,
+                restrictive_airspace_name,
+                restrictive_type,
+                seqno,
+                boundary_via,
+                latitude,
+                longitude,
+                arc_origin_latitude,
+                arc_origin_longitude,
+                arc_distance,
+                area_code,
+                icao_code,
+                multiple_code
+            FROM tbl_restrictive_airspace
+            WHERE restrictive_type IN ('D', 'R', 'P')
+            ORDER BY rowid ASC
+        """)
+        
+        areas = []
+        current_id = None
+        current_name = ""
+        current_type = ""
+        current_coords = []
+        prev_seqno = 99999
+        
+        def safe_append_area():
+            if current_id is not None and len(current_coords) > 2:
+                if current_coords[0] != current_coords[-1]:
+                    current_coords.append(current_coords[0])
+                
+                # Garantir que a geometria está no sentido anti-horário (Counter-Clockwise)
+                # O padrão GeoJSON exige CCW para anéis externos. Sentido horário preenche o globo inteiro.
+                fixed_coords = self._ensure_ccw(current_coords)
+                
+                areas.append(AreaRestrita(
+                    designation=current_id,
+                    nome=current_name,
+                    tipo=current_type,
+                    coordenadas=[fixed_coords]
+                ))
+
+        for row in cursor.fetchall():
+            seqno = row["seqno"]
+            area_code = row["area_code"] or ""
+            icao_code = row["icao_code"] or ""
+            desig = row["restrictive_airspace_designation"] or ""
+            mult = row["multiple_code"] or ""
+            r_name = row["restrictive_airspace_name"] or ""
+            r_type = row["restrictive_type"] or ""
+            
+            area_id = f"{area_code}_{icao_code}_{desig}_{mult}"
+            
+            # Se o seqno for menor ou igual ao anterior, ou se mudou o ID da área
+            if seqno <= prev_seqno or area_id != current_id:
+                safe_append_area()
+                current_id = area_id
+                
+                # Nomenclatura: icaocode + restrictive type + "-" designation + " " name
+                nome_formatado = f"{icao_code}{r_type}-{desig}"
+                if r_name:
+                    nome_formatado += f" {r_name}"
+                    
+                current_name = nome_formatado
+                current_type = r_type
+                current_coords = []
+                
+            prev_seqno = seqno
+            
+            b_via = row["boundary_via"]
+            lat = row["latitude"]
+            lon = row["longitude"]
+            arc_lat = row["arc_origin_latitude"]
+            arc_lon = row["arc_origin_longitude"]
+            arc_dist = row["arc_distance"]
+            
+            if b_via in ('C', 'CE') and arc_lat is not None and arc_lon is not None and arc_dist is not None:
+                circle_coords = self._gerar_circulo(arc_lat, arc_lon, arc_dist)
+                current_coords.extend(circle_coords)
+            elif lat is not None and lon is not None:
+                current_coords.append([lon, lat])
+                
+        safe_append_area()
+            
+        return areas
+
+    def buscar_firs(self) -> List[AreaFir]:
+        cursor = self.conexao.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                fir_uir_identifier,
+                fir_uir_name,
+                fir_uir_indicator,
+                seqno,
+                boundary_via,
+                fir_uir_latitude,
+                fir_uir_longitude,
+                arc_origin_latitude,
+                arc_origin_longitude,
+                arc_distance,
+                area_code
+            FROM tbl_fir_uir
+            ORDER BY rowid ASC
+        """)
+        
+        firs = []
+        current_id = None
+        current_name = ""
+        current_indicator = ""
+        current_coords = []
+        prev_seqno = 99999
+        
+        def safe_append_fir():
+            if current_id is not None and len(current_coords) > 2:
+                if current_coords[0] != current_coords[-1]:
+                    current_coords.append(current_coords[0])
+                
+                fixed_coords = self._ensure_ccw(current_coords)
+                
+                firs.append(AreaFir(
+                    identifier=current_id,
+                    nome=current_name,
+                    indicador=current_indicator,
+                    coordenadas=[fixed_coords]
+                ))
+
+        for row in cursor.fetchall():
+            seqno = row["seqno"]
+            area_code = row["area_code"] or ""
+            identifier = row["fir_uir_identifier"] or ""
+            indicator = row["fir_uir_indicator"] or ""
+            f_name = row["fir_uir_name"] or ""
+            
+            # Use indicator to distinguish FIR from UIR of same identifier
+            area_id = f"{area_code}_{identifier}_{indicator}"
+            
+            if seqno <= prev_seqno or area_id != current_id:
+                safe_append_fir()
+                current_id = area_id
+                
+                # Nomenclatura solicitada: FIR BRASILIA SBBS
+                # Limpamos possíveis ocorrências de "FIR" ou "UIR" que já vêm no banco
+                clean_name = f_name.upper().replace(" FIR", "").replace("FIR ", "").replace(" UIR", "").replace("UIR ", "").strip()
+                if not clean_name:
+                    clean_name = identifier
+                    
+                prefix = "FIR" if indicator == 'F' else "UIR"
+                current_name = f"{prefix} {clean_name} {identifier}"
+                current_indicator = indicator
+                current_coords = []
+                
+            prev_seqno = seqno
+            
+            b_via = row["boundary_via"]
+            lat = row["fir_uir_latitude"]
+            lon = row["fir_uir_longitude"]
+            arc_lat = row["arc_origin_latitude"]
+            arc_lon = row["arc_origin_longitude"]
+            arc_dist = row["arc_distance"]
+            
+            if b_via in ('C', 'CE') and arc_lat is not None and arc_lon is not None and arc_dist is not None:
+                circle_coords = self._gerar_circulo(arc_lat, arc_lon, arc_dist)
+                current_coords.extend(circle_coords)
+            elif lat is not None and lon is not None:
+                current_coords.append([lon, lat])
+                
+        safe_append_fir()
+            
+        return firs

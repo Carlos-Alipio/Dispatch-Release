@@ -86,6 +86,41 @@
             class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2 px-4 rounded transition-colors shadow-lg">Ambas</button>
     </div>
 
+    <!-- Controle de Camadas (Layers) -->
+    <div class="absolute top-6 right-6 z-10 bg-slate-800 p-4 rounded-xl shadow-2xl border border-slate-700 text-white text-sm w-52">
+        <h3 class="font-bold mb-3 border-b border-slate-600 pb-2">Camadas do Mapa</h3>
+        <div class="flex flex-col space-y-2">
+            <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" id="toggle-firs" class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800" checked>
+                <span class="text-slate-300 hover:text-white transition-colors">FIRs / UIRs</span>
+            </label>
+            <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" id="toggle-restritas" class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800" checked>
+                <span class="text-slate-300 hover:text-white transition-colors">Áreas Restritas</span>
+            </label>
+            <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" id="toggle-aerovias" class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800" checked>
+                <span class="text-slate-300 hover:text-white transition-colors">Aerovias</span>
+            </label>
+            <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" id="toggle-aeroportos" class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800" checked>
+                <span class="text-slate-300 hover:text-white transition-colors">Aeroportos</span>
+            </label>
+            <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" id="toggle-vors" class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800" checked>
+                <span class="text-slate-300 hover:text-white transition-colors">VORs</span>
+            </label>
+            <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" id="toggle-ndbs" class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800" checked>
+                <span class="text-slate-300 hover:text-white transition-colors">NDBs</span>
+            </label>
+            <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" id="toggle-fixos" class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800" checked>
+                <span class="text-slate-300 hover:text-white transition-colors">Fixos / Waypoints</span>
+            </label>
+        </div>
+    </div>
+
 
     <!-- Container do Mapa WebGL -->
     <main class="flex-grow relative">
@@ -278,6 +313,108 @@
                 }
             });
 
+            // --- ÁREAS RESTRITAS (ESPAÇO AÉREO) ---
+            map.addSource('airac-areas-restritas', {
+                type: 'geojson',
+                data: '/api/v1/geo/airac/areas-restritas?v=4' // Cache buster
+            });
+
+            // --- FIR / UIR ---
+            map.addSource('airac-firs', {
+                type: 'geojson',
+                data: '/api/v1/geo/airac/firs'
+            });
+            // Fill (Fundo semitransparente)
+            map.addLayer({
+                id: 'camada-restritas-fill',
+                type: 'fill',
+                source: 'airac-areas-restritas',
+                minzoom: 4,
+                paint: {
+                    'fill-color': [
+                        'match',
+                        ['get', 'tipo'],
+                        'P', '#ef4444', // Prohibited: Red
+                        'R', '#d946ef', // Restricted: Fuchsia/Magenta
+                        'D', '#f97316', // Danger: Orange
+                        'W', '#f59e0b', // Warning: Amber
+                        '#ef4444'       // Default
+                    ],
+                    'fill-opacity': 0.1
+                }
+            }, 'camada-airac-fixos'); // Coloca ANTES dos fixos
+
+            // Line (Borda tracejada)
+            map.addLayer({
+                id: 'camada-restritas-line',
+                type: 'line',
+                source: 'airac-areas-restritas',
+                minzoom: 4,
+                paint: {
+                    'line-color': [
+                        'match',
+                        ['get', 'tipo'],
+                        'P', '#ef4444', 
+                        'R', '#d946ef',
+                        'D', '#f97316',
+                        'W', '#f59e0b',
+                        '#ef4444'
+                    ],
+                    'line-width': 2,
+                    'line-dasharray': [3, 3] // Tracejado estilo ERC
+                }
+            }, 'camada-airac-fixos');
+
+            // Layer para o Nome da Área (designation)
+            map.addLayer({
+                id: 'camada-restritas-nome',
+                type: 'symbol',
+                source: 'airac-areas-restritas',
+                minzoom: 6,
+                layout: {
+                    'text-field': ['get', 'nome'],
+                    'text-size': 12,
+                    'symbol-placement': 'point' // Ponto centralizado
+                },
+                paint: {
+                    'text-color': '#94a3b8',
+                    'text-halo-color': '#ffffff',
+                    'text-halo-width': 1.5
+                }
+            }, 'camada-airac-fixos');
+
+            // --- FIR LEYERS ---
+            // Inserido DEPOIS de restritas-fill para que o beforeId funcione
+            map.addLayer({
+                id: 'camada-firs-line',
+                type: 'line',
+                source: 'airac-firs',
+                minzoom: 2,
+                paint: {
+                    'line-color': '#1e293b', 
+                    'line-width': 1.5,
+                    'line-dasharray': [4, 2]
+                }
+            }, 'camada-restritas-fill'); 
+
+            map.addLayer({
+                id: 'camada-firs-nome',
+                type: 'symbol',
+                source: 'airac-firs',
+                minzoom: 3,
+                layout: {
+                    'text-field': ['get', 'nome'],
+                    'text-size': 20,
+                    'text-letter-spacing': 0.1,
+                    'symbol-placement': 'point'
+                },
+                paint: {
+                    'text-color': '#475569', 
+                    'text-halo-color': '#f8fafc',
+                    'text-halo-width': 2
+                }
+            }, 'camada-restritas-fill');
+
             // --- CAMADA AEROVIAS ---
             const arrowImage = await new Promise((resolve, reject) => {
                 const img = new Image(16, 16);
@@ -385,6 +522,38 @@
             document.getElementById('btn-awys-hi').addEventListener('click', () => applyAirwayFilter(filterHi, 'btn-awys-hi'));
             document.getElementById('btn-awys-lo').addEventListener('click', () => applyAirwayFilter(filterLo, 'btn-awys-lo'));
             document.getElementById('btn-awys-both').addEventListener('click', () => applyAirwayFilter(filterBoth, 'btn-awys-both'));
+
+            // --- CONTROLE DE CAMADAS (TOGGLE) ---
+            function toggleLayerVisibility(layerIds, isVisible) {
+                const visibility = isVisible ? 'visible' : 'none';
+                layerIds.forEach(id => {
+                    if (map.getLayer(id)) {
+                        map.setLayoutProperty(id, 'visibility', visibility);
+                    }
+                });
+            }
+
+            document.getElementById('toggle-firs').addEventListener('change', (e) => {
+                toggleLayerVisibility(['camada-firs-line', 'camada-firs-nome'], e.target.checked);
+            });
+            document.getElementById('toggle-restritas').addEventListener('change', (e) => {
+                toggleLayerVisibility(['camada-restritas-fill', 'camada-restritas-line', 'camada-restritas-nome'], e.target.checked);
+            });
+            document.getElementById('toggle-aerovias').addEventListener('change', (e) => {
+                toggleLayerVisibility(['camada-aerovias-linha', 'camada-aerovias-direcao', 'camada-aerovias-nome'], e.target.checked);
+            });
+            document.getElementById('toggle-aeroportos').addEventListener('change', (e) => {
+                toggleLayerVisibility(['camada-airac-aerodromos-circle', 'camada-airac-aerodromos-nome'], e.target.checked);
+            });
+            document.getElementById('toggle-vors').addEventListener('change', (e) => {
+                toggleLayerVisibility(['camada-airac-vors'], e.target.checked);
+            });
+            document.getElementById('toggle-ndbs').addEventListener('change', (e) => {
+                toggleLayerVisibility(['camada-airac-ndbs'], e.target.checked);
+            });
+            document.getElementById('toggle-fixos').addEventListener('change', (e) => {
+                toggleLayerVisibility(['camada-airac-fixos'], e.target.checked);
+            });
 
         });
 

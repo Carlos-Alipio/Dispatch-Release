@@ -80,3 +80,17 @@ class AeroviaLinha:
     usage: str          # 'HI' ou 'LO'
     direction: str      # 'ONE-WAY' ou 'TWO-WAY'
     coordenadas: List[List[float]] # Lista de [lon, lat] para o LineString
+
+@dataclass
+class AreaRestrita:
+    designation: str
+    nome: str
+    tipo: str  # P, R, D, MOA, etc
+    coordenadas: List[List[float]] # Lista de [lon, lat] formando o Polígono
+
+@dataclass
+class AreaFir:
+    identifier: str
+    nome: str
+    indicador: str # F para FIR, U para UIR
+    coordenadas: List[List[float]]

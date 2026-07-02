@@ -74,9 +74,13 @@ class LineStringGeometry(Schema):
     type: Literal["LineString"] = "LineString"
     coordinates: List[List[float]]
 
+class PolygonGeometry(Schema):
+    type: Literal["Polygon"] = "Polygon"
+    coordinates: List[List[List[float]]]
+
 class Feature(Schema):
     type: Literal["Feature"] = "Feature"
-    geometry: Union[PointGeometry, LineStringGeometry]
+    geometry: Union[PointGeometry, LineStringGeometry, PolygonGeometry]
     properties: dict = {}
 
 class FeatureCollection(Schema):
@@ -332,6 +336,54 @@ def buscar_aerovias(request, response: HttpResponse):
                     "usage": linha.usage,
                     "direction": linha.direction,
                     "tipo": "AEROVIA"
+                }
+            )
+        )
+
+    return FeatureCollection(features=features)
+
+@api.get("/v1/geo/airac/areas-restritas", response=FeatureCollection)
+def buscar_areas_restritas(request, response: HttpResponse):
+    """Retorna o espaço aéreo restrito como Polígonos"""
+    
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    repo = AiracRepository(ciclo="atual")
+    areas = repo.buscar_areas_restritas()
+    
+    features = []
+    for area in areas:
+        features.append(
+            Feature(
+                geometry=PolygonGeometry(coordinates=area.coordenadas),
+                properties={
+                    "designation": area.designation,
+                    "nome": area.nome,
+                    "tipo": area.tipo
+                }
+            )
+        )
+
+    return FeatureCollection(features=features)
+
+@api.get("/v1/geo/airac/firs", response=FeatureCollection)
+def buscar_firs_endpoint(request, response: HttpResponse):
+    """Retorna as FIRs e UIRs como Polígonos"""
+    
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    
+    repo = AiracRepository(ciclo="atual")
+    firs = repo.buscar_firs()
+    
+    features = []
+    for fir in firs:
+        features.append(
+            Feature(
+                geometry=PolygonGeometry(coordinates=fir.coordenadas),
+                properties={
+                    "identifier": fir.identifier,
+                    "nome": fir.nome,
+                    "indicador": fir.indicador
                 }
             )
         )
