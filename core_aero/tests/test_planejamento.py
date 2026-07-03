@@ -137,7 +137,7 @@ class TestValidarSegmentosRota:
 
     def test_nivel_abaixo_do_minimo_do_segmento(self):
         # Mínimo de 38.000 ft (F380) com nível F350 → erro
-        fixos = [_fixo("AAA", min=38000), _fixo("BBB", course=100.0)]
+        fixos = [_fixo("AAA", altitude_minima=38000), _fixo("BBB", course=100.0)]
         with pytest.raises(NivelAbaixoDoMinimo):
             validar_segmentos_rota(fixos, 350, {})
 
@@ -163,3 +163,26 @@ class TestValidarSegmentosRota:
         ]
         segs = validar_segmentos_rota(fixos, 340, {})
         assert segs[0].course == 280.0
+
+    def test_funcao_e_pura_nao_muta_os_fixos_de_entrada(self):
+        # Contrato de pureza: validar não pode alterar os objetos recebidos
+        fixos = [_fixo("AAA"), _fixo("BBB", course=100.0)]
+        copias = [FixoRota(**vars(f)) for f in fixos]
+        validar_segmentos_rota(fixos, 350, {})
+        assert fixos == copias
+
+    def test_juncao_de_aerovias_usa_dados_da_aerovia_de_saida(self):
+        # Rota AAA -UZ1-> BBB -UW2-> CCC: BBB aparece duas vezes (fim da UZ1,
+        # início da UW2). O segmento BBB→CCC deve reportar a aerovia de chegada
+        # em CCC (UW2), e a restrição de saída de BBB vem do registro da UW2.
+        fixos = [
+            _fixo("AAA", airway="UZ1"),
+            _fixo("BBB", airway="UZ1", course=100.0),
+            _fixo("BBB", airway="UW2"),
+            _fixo("CCC", airway="UW2", course=90.0),
+        ]
+        segs = validar_segmentos_rota(fixos, 350, {})
+        assert [(s.from_waypoint, s.to_waypoint, s.airway) for s in segs] == [
+            ("AAA", "BBB", "UZ1"),
+            ("BBB", "CCC", "UW2"),
+        ]

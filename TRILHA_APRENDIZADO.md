@@ -30,13 +30,14 @@ O projeto segue **Clean Architecture** em 4 camadas, com dependências apontando
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│ APRESENTAÇÃO — core_aero/templates/template.html           │
-│ MapLibre GL JS + TailwindCSS + JavaScript puro (fetch)     │
+│ APRESENTAÇÃO — templates/template.html (marcação) +        │
+│ static/core_aero/js/cockpit.js (MapLibre GL, fetch);       │
+│ config do servidor chega via window.COCKPIT_CONFIG         │
 └────────────────────────────────────────────────────────────┘
                         ↑ HTTP / GeoJSON ↓
 ┌────────────────────────────────────────────────────────────┐
 │ API — core_aero/api.py (Django Ninja + Pydantic)           │
-│ /api/rotas/*, /api/v1/geo/airac/* → serializa em GeoJSON   │
+│ /api/v1/rotas/*, /api/v1/geo/airac/* → GeoJSON             │
 │ Exception handlers: erros de domínio → HTTP 404/422/503    │
 └────────────────────────────────────────────────────────────┘
                         ↑ chamadas ↓
@@ -56,7 +57,7 @@ O projeto segue **Clean Architecture** em 4 camadas, com dependências apontando
 **Fluxo de dados de uma rota:**
 
 1. O usuário digita a rota no formulário do cockpit → `fetch()` chama
-   `GET /api/rotas/geojson_completo/`.
+   `GET /api/v1/rotas/geojson_completo/`.
 2. `extrair_instrucoes_rota()` (domínio) converte a string em triplas
    `(fixo_inicial, aerovia, fixo_final)`.
 3. `AiracRepository.buscar_fixos_aerovia()` consulta o SQLite e devolve a sequência
@@ -192,13 +193,18 @@ todos os VORs do Brasil com frequência e coordenadas. Depois compare com `busca
 **No projeto:**
 - `aero_saas/settings.py` — configuração via variáveis de ambiente (`python-dotenv`),
   `ALLOWED_HOSTS`, bloco `LOGGING`; compare com o `.env.example`.
-- `core_aero/api.py` — 10 endpoints; observe como `calcular_rota_geojson_completo()`
-  recebe query params (`route_string`, `initial_level`) e como os endpoints
-  `/v1/geo/airac/*` setam cache de 28 dias no `HttpResponse`.
+- `core_aero/api.py` — endpoints versionados sob `/v1/`; observe como
+  `calcular_rota_geojson_completo()` só orquestra: normalizar a rota, buscar fixos,
+  validar e serializar vivem em funções separadas (`_incluir_terminais_na_rota`,
+  `_buscar_fixos_da_rota`, `_rota_para_geojson`). Note também o
+  `with AiracRepository(...) as repo:` — a conexão fecha sozinha ao fim do request —
+  e o cache de 28 dias nos endpoints `/v1/geo/airac/*`.
 - Ainda em `api.py`, os `@api.exception_handler(...)` no topo: é ali que exceções de
   domínio viram status HTTP (404/422/503) sem `try/except` espalhado pelos endpoints.
-- `cockpit_ui()` — repare que o template é renderizado com `render()` para injetar
-  `settings.OWM_API_KEY`; o segredo nunca fica no HTML versionado.
+- `core_aero/views.py` — página HTML não é API: o Cockpit é uma view Django comum
+  servida na raiz (`/`), que injeta `settings.OWM_API_KEY` no template via `render()`;
+  o segredo nunca fica no HTML versionado. A URL antiga `/api/rotas/ui/` virou um
+  redirect — exemplo de como migrar URLs sem quebrar links.
 
 **Exercício:** adicione um endpoint `GET /api/v1/geo/airac/aerodromos/{icao}/vizinhos`
 que retorne aeródromos num raio de N milhas náuticas, com schema Pydantic próprio.
@@ -216,9 +222,12 @@ que retorne aeródromos num raio de N milhas náuticas, com schema Pydantic pró
 - Padrões de UI sem framework: estado em variáveis, funções de render, toggles de camada.
 
 **No projeto:**
-- `core_aero/templates/template.html` — 726 linhas: formulário de rota, botões de
-  filtro HI/LO/BOTH de aerovias, toggles de camadas, tudo em JS puro com `fetch`
-  para a API.
+- `core_aero/templates/template.html` — só a marcação (formulário de rota, botões de
+  filtro HI/LO/BOTH, toggles de camadas) mais a "ponte de configuração"
+  (`window.COCKPIT_CONFIG`), único ponto onde o Django injeta valores no JS.
+- `core_aero/static/core_aero/js/cockpit.js` — toda a lógica: `fetch` para a API,
+  eventos de formulário, filtros e visibilidade de camadas. Separar marcação (dinâmica,
+  processada pelo servidor) de comportamento (estático, cacheável) é o padrão a aprender.
 
 **Exercício:** adicione um botão que mostre/oculte a camada de FIRs e persista a
 escolha em `localStorage`.
@@ -240,7 +249,7 @@ escolha em `localStorage`.
 
 **No projeto:**
 - Toda a serialização GeoJSON em `core_aero/api.py`.
-- Em `template.html`: criação do mapa com style do CartoDB Positron, source raster
+- Em `static/core_aero/js/cockpit.js`: criação do mapa com style do CartoDB Positron, source raster
   do OpenWeatherMap (`tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png`),
   ícones SVG em `core_aero/static/core_aero/img/` (símbolos VOR/NDB/fixo/seta).
 

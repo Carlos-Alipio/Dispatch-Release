@@ -13,8 +13,8 @@ class Aerodromo:
 class AerodromoPrincipal:
     icao: str
     nome: str
-    lat_deg: float
-    lon_deg: float
+    latitude: float
+    longitude: float
     elevacao_ft: int
 
 @dataclass
@@ -33,10 +33,11 @@ class FixoRota:
     id: str
     is_reverse: bool
     airway_ref: str
-    active_level: Optional[int] = None
     course: Optional[float] = None
-    min: Optional[int] = None
-    max: Optional[int] = None
+    # Em pés (ft), como vem do AIRAC. Nomes completos: "min"/"max" sombreariam
+    # as funções builtin do Python de mesmo nome.
+    altitude_minima: Optional[int] = None
+    altitude_maxima: Optional[int] = None
     restriction: Optional[str] = None
     cruise_table: Optional[str] = None
     regras_cruzeiro: List[RegraCruzeiro] = field(default_factory=list)
@@ -56,23 +57,23 @@ class AuxilioNDB:
     identifier: str
     nome: str
     frequencia_khz: float
-    lat_deg: float
-    lon_deg: float
+    latitude: float
+    longitude: float
 
 @dataclass
 class AuxilioVOR:
     identifier: str
     nome: str
     frequencia_mhz: float
-    lat_deg: float
-    lon_deg: float
+    latitude: float
+    longitude: float
 
 @dataclass
 class AuxilioFixo:
     identifier: str
     usage: str
-    lat_deg: float
-    lon_deg: float
+    latitude: float
+    longitude: float
 
 @dataclass
 class AeroviaLinha:

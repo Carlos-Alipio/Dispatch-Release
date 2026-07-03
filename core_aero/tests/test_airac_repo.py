@@ -4,6 +4,7 @@ Testes de integração do repositório AIRAC.
 Dependem do arquivo core_aero/data/airac/airac_atual.s3db (173 MB, fora do git);
 são pulados automaticamente onde ele não existe (ex.: CI).
 """
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -37,6 +38,15 @@ class TestBuscarAerodromo:
     def test_icao_inexistente_levanta_excecao_de_dominio(self, repo):
         with pytest.raises(AerodromoNaoEncontrado):
             repo.buscar_aerodromo("ZZZZ")
+
+
+class TestCicloDeVidaDaConexao:
+    def test_with_fecha_a_conexao_ao_sair_do_bloco(self):
+        with AiracRepository(ciclo="atual") as repo:
+            repo.buscar_aerodromo("SBGR")
+        # Fora do bloco a conexão deve estar fechada: usar levanta erro
+        with pytest.raises(sqlite3.ProgrammingError):
+            repo.conexao.cursor()
 
 
 class TestBuscarCoordenadas:

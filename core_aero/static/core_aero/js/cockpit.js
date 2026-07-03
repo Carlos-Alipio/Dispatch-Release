@@ -1,0 +1,580 @@
+/*
+ * Cockpit Dispatch Release — lógica do mapa (MapLibre GL).
+ *
+ * Este arquivo é estático: o Django serve-o como asset, sem processar.
+ * Tudo que depende do servidor (segredos, configuração) chega via
+ * window.COCKPIT_CONFIG, injetado pelo template — nunca escreva chaves aqui.
+ *
+ * O JavaScript continua "cego": ele apenas injeta o GeoJSON na GPU.
+ */
+const map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    center: [-54.0, -15.0],
+    zoom: 4
+});
+
+map.on('load', async () => {
+    // --- NUVENS METEOROLÓGICAS (OPENWEATHERMAP) ---
+    map.addSource('owm-clouds', {
+        type: 'raster',
+        tiles: [
+            `https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${window.COCKPIT_CONFIG.owmApiKey}`
+        ],
+        tileSize: 256,
+        maxzoom: 8
+    });
+
+    // Omitir o beforeId aqui (como é a primeira a ser declarada) fará com que ela fique
+    // no fundo (estruturalmente antes de aerovias, waypoints e aeródromos).
+    map.addLayer({
+        id: 'layer-nuvens',
+        type: 'raster',
+        source: 'owm-clouds',
+        paint: {
+            'raster-opacity': 0.8
+        }
+    });
+
+    // Fonte de dados estática da Camada 2 - apontando direto para a URL da API
+    map.addSource('airac-aerodromos', {
+        type: 'geojson',
+        data: '/api/v1/geo/airac/aerodromos-principais'
+    });
+
+    // Usando uma camada de círculo (circle) para garantir a renderização na GPU
+    // sem depender de imagens externas ou SVGs que podem falhar no Canvas.
+    map.addLayer({
+        id: 'camada-airac-aerodromos-circle',
+        type: 'circle',
+        source: 'airac-aerodromos',
+        minzoom: 4,
+        paint: {
+            'circle-radius': 4,
+            'circle-color': '#38bdf8', // Azul claro
+            'circle-stroke-width': 1,
+            'circle-stroke-color': '#0f172a'
+        }
+    });
+
+    // Opcional: Adiciona o nome do aeródromo em zoom alto
+    map.addLayer({
+        id: 'camada-airac-aerodromos-nome',
+        type: 'symbol',
+        source: 'airac-aerodromos',
+        minzoom: 4, // Exibe os aeródromos antes (zoom 4)
+        layout: {
+            'text-field': ['get', 'icao'],
+            'text-size': 13, // Letra maior para os aeródromos
+            'text-anchor': 'top',
+            'text-offset': [0, 0.5]
+        },
+        paint: {
+            'text-color': '#ffffff',
+            'text-halo-color': '#0f172a',
+            'text-halo-width': 1
+        }
+    });
+});
+
+map.on('load', async () => { // IMPORTANTE: adicione 'async' na função do 'load'
+
+    // ... (código dos aeródromos existente) ...
+
+    // --- CAMADA NDB ---
+    // 1. Carrega o SVG, renderiza num Canvas e extrai o ImageData para a GPU
+    const ndbImage = await new Promise((resolve, reject) => {
+        const img = new Image(32, 32);
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32;
+            canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, 32, 32);
+            resolve(ctx.getImageData(0, 0, 32, 32));
+        };
+        img.onerror = reject;
+        img.src = '/static/core_aero/img/ndb-symbol.svg';
+    });
+    map.addImage('icone-ndb', ndbImage);
+
+    // 2. Cria a Fonte conectada ao endpoint do Django Ninja
+    map.addSource('airac-ndbs', {
+        type: 'geojson',
+        data: '/api/v1/geo/airac/ndbs'
+    });
+
+    // 3. Cria a Camada Visual (Junta os dados com o ícone)
+    map.addLayer({
+        id: 'camada-airac-ndbs',
+        type: 'symbol',
+        source: 'airac-ndbs',
+        minzoom: 6,
+        layout: {
+            'icon-image': 'icone-ndb',
+            'icon-size': 1.0,           // Ajuste conforme o tamanho do seu SVG
+            'icon-allow-overlap': true, // Nunca esconde o auxílio visualmente
+
+            // Rótulo de texto
+            'text-field': ['get', 'icao'], // Pega a propriedade "icao" do GeoJSON
+            'text-anchor': 'left',         // Ancora o texto pela esquerda...
+            'text-offset': [1.5, 0],       // ...e empurra um pouco mais para a direita
+            'text-size': 12
+        },
+        paint: {
+            'text-color': '#10b981',       // Cor verde para diferenciar de aeroportos (azul)
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 1.5
+        }
+    });
+    // --- CAMADA VOR ---
+    const vorImage = await new Promise((resolve, reject) => {
+        const img = new Image(32, 32);
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32;
+            canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, 32, 32);
+            resolve(ctx.getImageData(0, 0, 32, 32));
+        };
+        img.onerror = reject;
+        img.src = '/static/core_aero/img/vor-symbol.svg';
+    });
+    map.addImage('icone-vor', vorImage);
+
+    map.addSource('airac-vors', {
+        type: 'geojson',
+        data: '/api/v1/geo/airac/vors'
+    });
+
+    map.addLayer({
+        id: 'camada-airac-vors',
+        type: 'symbol',
+        source: 'airac-vors',
+        minzoom: 6,
+        layout: {
+            'icon-image': 'icone-vor',
+            'icon-size': 1.0,
+            'icon-allow-overlap': true,
+            'text-field': ['get', 'icao'],
+            'text-anchor': 'left',
+            'text-offset': [1.5, 0],
+            'text-size': 12
+        },
+        paint: {
+            'text-color': '#3b82f6', // Cor azul específica para os VORs
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 1.5
+        }
+    });
+    // --- CAMADA FIXO ---
+    const fixoImage = await new Promise((resolve, reject) => {
+        const img = new Image(32, 32);
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32;
+            canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, 32, 32);
+            resolve(ctx.getImageData(0, 0, 32, 32));
+        };
+        img.onerror = reject;
+        img.src = '/static/core_aero/img/fixo-symbol.svg';
+    });
+    map.addImage('icone-fixo', fixoImage);
+
+    map.addSource('airac-fixos', {
+        type: 'geojson',
+        data: '/api/v1/geo/airac/fixos'
+    });
+
+    map.addLayer({
+        id: 'camada-airac-fixos',
+        type: 'symbol',
+        source: 'airac-fixos',
+        minzoom: 7, // Fixos são extremamente numerosos, zoom maior é melhor
+        layout: {
+            'icon-image': 'icone-fixo',
+            'icon-size': 0.8, // Triângulo um pouco menor
+            'icon-allow-overlap': true,
+            'text-field': ['get', 'icao'],
+            'text-anchor': 'left',
+            'text-offset': [1.2, 0],
+            'text-size': 11
+        },
+        paint: {
+            'text-color': '#a855f7', // Cor roxa (purple-500)
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 1.5,
+            'icon-halo-color': '#f2f4f6',
+            'icon-halo-width': 4
+        }
+    });
+
+    // --- ÁREAS RESTRITAS (ESPAÇO AÉREO) ---
+    map.addSource('airac-areas-restritas', {
+        type: 'geojson',
+        data: '/api/v1/geo/airac/areas-restritas?v=4' // Cache buster
+    });
+
+    // --- FIR / UIR ---
+    map.addSource('airac-firs', {
+        type: 'geojson',
+        data: '/api/v1/geo/airac/firs'
+    });
+    // Fill (Fundo semitransparente)
+    map.addLayer({
+        id: 'camada-restritas-fill',
+        type: 'fill',
+        source: 'airac-areas-restritas',
+        minzoom: 4,
+        paint: {
+            'fill-color': [
+                'match',
+                ['get', 'tipo'],
+                'P', '#ef4444', // Prohibited: Red
+                'R', '#d946ef', // Restricted: Fuchsia/Magenta
+                'D', '#f97316', // Danger: Orange
+                'W', '#f59e0b', // Warning: Amber
+                '#ef4444'       // Default
+            ],
+            'fill-opacity': 0.1
+        }
+    }, 'camada-airac-fixos'); // Coloca ANTES dos fixos
+
+    // Line (Borda tracejada)
+    map.addLayer({
+        id: 'camada-restritas-line',
+        type: 'line',
+        source: 'airac-areas-restritas',
+        minzoom: 4,
+        paint: {
+            'line-color': [
+                'match',
+                ['get', 'tipo'],
+                'P', '#ef4444',
+                'R', '#d946ef',
+                'D', '#f97316',
+                'W', '#f59e0b',
+                '#ef4444'
+            ],
+            'line-width': 2,
+            'line-dasharray': [3, 3] // Tracejado estilo ERC
+        }
+    }, 'camada-airac-fixos');
+
+    // Layer para o Nome da Área (designation)
+    map.addLayer({
+        id: 'camada-restritas-nome',
+        type: 'symbol',
+        source: 'airac-areas-restritas',
+        minzoom: 6,
+        layout: {
+            'text-field': ['get', 'nome'],
+            'text-size': 12,
+            'symbol-placement': 'point' // Ponto centralizado
+        },
+        paint: {
+            'text-color': '#94a3b8',
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 1.5
+        }
+    }, 'camada-airac-fixos');
+
+    // --- FIR LEYERS ---
+    // Inserido DEPOIS de restritas-fill para que o beforeId funcione
+    map.addLayer({
+        id: 'camada-firs-line',
+        type: 'line',
+        source: 'airac-firs',
+        minzoom: 2,
+        paint: {
+            'line-color': '#1e293b',
+            'line-width': 1.5,
+            'line-dasharray': [4, 2]
+        }
+    }, 'camada-restritas-fill');
+
+    map.addLayer({
+        id: 'camada-firs-nome',
+        type: 'symbol',
+        source: 'airac-firs',
+        minzoom: 3,
+        layout: {
+            'text-field': ['get', 'nome'],
+            'text-size': 20,
+            'text-letter-spacing': 0.1,
+            'symbol-placement': 'point'
+        },
+        paint: {
+            'text-color': '#475569',
+            'text-halo-color': '#f8fafc',
+            'text-halo-width': 2
+        }
+    }, 'camada-restritas-fill');
+
+    // --- CAMADA AEROVIAS ---
+    const arrowImage = await new Promise((resolve, reject) => {
+        const img = new Image(16, 16);
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 16; canvas.height = 16;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, 16, 16);
+            resolve(ctx.getImageData(0, 0, 16, 16));
+        };
+        img.onerror = reject;
+        img.src = '/static/core_aero/img/seta-symbol.svg';
+    });
+    map.addImage('icone-seta', arrowImage);
+
+    map.addSource('airac-aerovias', {
+        type: 'geojson',
+        data: '/api/v1/geo/airac/aerovias'
+    });
+
+    // Para as aerovias ficarem por baixo de tudo (abaixo dos labels de mapa, se possível),
+    // mas o MapLibre as adiciona por cima de tudo no topo da lista se não houver beforeId.
+    // Aqui elas ficarão por cima dos fixos se colocadas DEPOIS.
+    // O ideal é adicionar as aerovias ANTES dos fixos, NDBs e VORs para que os halos funcionem.
+    // Para não quebrar a ordem visual atual, vamos reposicioná-las para trás referenciando o id da camada de fixos
+    map.addLayer({
+        id: 'camada-aerovias-linha',
+        type: 'line',
+        source: 'airac-aerovias',
+        minzoom: 5,
+        layout: {
+            'line-join': 'round',
+            'line-cap': 'round'
+        },
+        paint: {
+            'line-color': [
+                'match',
+                ['get', 'usage'],
+                'HI', '#94a3b8',
+                'LO', '#cbd5e1',
+                '#cbd5e1'
+            ],
+            'line-width': 1.5,
+            'line-opacity': 0.8
+        }
+    }, 'camada-airac-fixos'); // O 2º parâmetro insere a camada ANTES da camada-airac-fixos
+
+    map.addLayer({
+        id: 'camada-aerovias-direcao',
+        type: 'symbol',
+        source: 'airac-aerovias',
+        minzoom: 6,
+        filter: ['==', ['get', 'direction'], 'ONE-WAY'],
+        layout: {
+            'symbol-placement': 'line',
+            'symbol-spacing': 80,
+            'icon-image': 'icone-seta',
+            'icon-size': 0.8,
+            'icon-keep-upright': false
+        }
+    }, 'camada-airac-fixos');
+
+    map.addLayer({
+        id: 'camada-aerovias-nome',
+        type: 'symbol',
+        source: 'airac-aerovias',
+        minzoom: 6,
+        layout: {
+            'symbol-placement': 'line',
+            'symbol-spacing': 200, // Repete o nome ao longo da linha
+            'text-field': ['get', 'icao'],
+            'text-size': 11,
+            'text-keep-upright': true,
+            'text-offset': [0, -1] // Coloca o nome levemente acima da linha
+        },
+        paint: {
+            'text-color': '#64748b',
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 1.5
+        }
+    }, 'camada-airac-fixos');
+
+    // --- LÓGICA DE FILTROS ---
+    const filterHi = ['==', ['get', 'usage'], 'HI'];
+    const filterLo = ['==', ['get', 'usage'], 'LO'];
+    const filterBoth = ['has', 'usage'];
+
+    window.applyAirwayFilter = function (filterCondition, activeBtnId) {
+        map.setFilter('camada-aerovias-linha', filterCondition);
+        map.setFilter('camada-aerovias-nome', filterCondition); // Aplica o filtro no nome também
+        map.setFilter('camada-aerovias-direcao', ['all', filterCondition, ['==', ['get', 'direction'], 'ONE-WAY']]);
+
+        ['btn-awys-hi', 'btn-awys-lo', 'btn-awys-both'].forEach(id => {
+            const btn = document.getElementById(id);
+            if (id === activeBtnId) {
+                btn.classList.replace('bg-slate-700', 'bg-blue-600');
+                btn.classList.replace('hover:bg-slate-600', 'hover:bg-blue-500');
+            } else {
+                btn.classList.replace('bg-blue-600', 'bg-slate-700');
+                btn.classList.replace('hover:bg-blue-500', 'hover:bg-slate-600');
+            }
+        });
+    };
+
+    document.getElementById('btn-awys-hi').addEventListener('click', () => applyAirwayFilter(filterHi, 'btn-awys-hi'));
+    document.getElementById('btn-awys-lo').addEventListener('click', () => applyAirwayFilter(filterLo, 'btn-awys-lo'));
+    document.getElementById('btn-awys-both').addEventListener('click', () => applyAirwayFilter(filterBoth, 'btn-awys-both'));
+
+    // --- CONTROLE DE CAMADAS (TOGGLE) ---
+    function toggleLayerVisibility(layerIds, isVisible) {
+        const visibility = isVisible ? 'visible' : 'none';
+        layerIds.forEach(id => {
+            if (map.getLayer(id)) {
+                map.setLayoutProperty(id, 'visibility', visibility);
+            }
+        });
+    }
+
+    document.getElementById('toggle-firs').addEventListener('change', (e) => {
+        toggleLayerVisibility(['camada-firs-line', 'camada-firs-nome'], e.target.checked);
+    });
+    document.getElementById('toggle-nuvens').addEventListener('change', (e) => {
+        toggleLayerVisibility(['layer-nuvens'], e.target.checked);
+    });
+    document.getElementById('toggle-restritas').addEventListener('change', (e) => {
+        toggleLayerVisibility(['camada-restritas-fill', 'camada-restritas-line', 'camada-restritas-nome'], e.target.checked);
+    });
+    document.getElementById('toggle-aerovias').addEventListener('change', (e) => {
+        toggleLayerVisibility(['camada-aerovias-linha', 'camada-aerovias-direcao', 'camada-aerovias-nome'], e.target.checked);
+    });
+    document.getElementById('toggle-aeroportos').addEventListener('change', (e) => {
+        toggleLayerVisibility(['camada-airac-aerodromos-circle', 'camada-airac-aerodromos-nome'], e.target.checked);
+    });
+    document.getElementById('toggle-vors').addEventListener('change', (e) => {
+        toggleLayerVisibility(['camada-airac-vors'], e.target.checked);
+    });
+    document.getElementById('toggle-ndbs').addEventListener('change', (e) => {
+        toggleLayerVisibility(['camada-airac-ndbs'], e.target.checked);
+    });
+    document.getElementById('toggle-fixos').addEventListener('change', (e) => {
+        toggleLayerVisibility(['camada-airac-fixos'], e.target.checked);
+    });
+
+});
+
+async function carregarRota(origem, destino, routeString, level) {
+    const statusDiv = document.getElementById('statusMessage');
+    statusDiv.classList.add('hidden');
+
+    try {
+        // Envia a instrução tática completa para a API
+        const params = new URLSearchParams({
+            origem: origem,
+            destino: destino,
+            route_string: routeString,
+            initial_level: level
+        });
+
+        const response = await fetch(`/api/v1/rotas/geojson_completo/?${params.toString()}`);
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.erro || 'Erro ao planejar rota no backend.');
+        }
+
+        const geojson = await response.json();
+
+        if (map.getSource('rota-source')) {
+            map.getSource('rota-source').setData(geojson);
+        } else {
+            map.addSource('rota-source', {
+                type: 'geojson',
+                data: geojson
+            });
+
+            // Camada LineString (Segmentos da Rota)
+            map.addLayer({
+                id: 'camada-segmentos',
+                type: 'line',
+                source: 'rota-source',
+                filter: ['==', '$type', 'LineString'],
+                paint: {
+                    'line-color': '#E056FD', // Magenta forte
+                    'line-width': 4
+                }
+            });
+
+            // Camada Point (Waypoints / Aeródromos)
+            map.addLayer({
+                id: 'camada-pontos',
+                type: 'circle',
+                source: 'rota-source',
+                filter: ['==', '$type', 'Point'],
+                paint: {
+                    'circle-radius': [
+                        'match',
+                        ['get', 'tipo'],
+                        'origem', 8,
+                        'destino', 8,
+                        5 // fixos normais
+                    ],
+                    'circle-color': [
+                        'match',
+                        ['get', 'tipo'],
+                        'origem', '#22c55e',
+                        'destino', '#ef4444',
+                        '#ffffff'
+                    ],
+                    'circle-stroke-width': 2,
+                    'circle-stroke-color': '#E056FD'
+                }
+            });
+
+            // Camada Symbol (Nomes dos Fixos)
+            map.addLayer({
+                id: 'camada-textos',
+                type: 'symbol',
+                source: 'rota-source',
+                filter: ['==', '$type', 'Point'],
+                layout: {
+                    'text-field': ['get', 'icao'],
+                    // Força a âncora a ser sempre 'left' no texto,
+                    // cravando a renderização ESTRITAMENTE do lado direito da bolinha
+                    'text-anchor': 'left',
+                    'text-offset': [0.8, 0], // Desloca para a direita para não encostar no raio da bolinha
+                    'text-justify': 'left',
+                    'text-size': 11,
+                    'text-optional': true
+                },
+                paint: {
+                    'text-color': '#ffffff',
+                    'text-halo-color': '#0f172a', // Borda escura restaurada
+                    'text-halo-width': 2
+                }
+            });
+        }
+
+        // Centraliza o mapa dinamicamente com base nas coordenadas processadas
+        const bounds = new maplibregl.LngLatBounds();
+        geojson.features.forEach(feature => {
+            if (feature.geometry.type === 'Point') {
+                bounds.extend(feature.geometry.coordinates);
+            }
+        });
+
+        if (!bounds.isEmpty()) {
+            map.fitBounds(bounds, { padding: { top: 80, bottom: 80, left: 420, right: 80 } }); // left 420 compensa o painel flutuante
+        }
+
+    } catch (error) {
+        console.error(error);
+        statusDiv.textContent = error.message;
+        statusDiv.classList.remove('hidden');
+    }
+}
+
+document.getElementById('routeForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const origem = document.getElementById('origem').value;
+    const destino = document.getElementById('destino').value;
+    const route = document.getElementById('route_string').value;
+    const level = document.getElementById('initial_level').value;
+    carregarRota(origem, destino, route, level);
+});

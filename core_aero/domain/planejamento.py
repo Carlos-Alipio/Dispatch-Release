@@ -1,6 +1,7 @@
 import re
 import math
-from typing import List, Tuple, Dict
+from dataclasses import dataclass
+from typing import List, Tuple, Dict, Optional
 from core_aero.domain.entidades import FixoRota, SegmentoValidado, RegraCruzeiro
 from core_aero.domain.excecoes import SentidoProibido, NivelAbaixoDoMinimo, NivelInvalidoParaRumo
 
@@ -45,77 +46,125 @@ def is_course_odd(regras: List[RegraCruzeiro], course: float) -> bool:
     """
     return 0 <= course < 180
 
+@dataclass
+class _PontoDaRota:
+    """
+    Um ponto único da rota, com as junções de aerovia já resolvidas.
+
+    Quando a rota troca de aerovia (ex.: "... UZ1 BBB UW2 ..."), o fixo BBB
+    vem do banco DUAS vezes: uma como fim da UZ1 e outra como início da UW2.
+    São dois registros diferentes do mesmo lugar físico:
+
+      - a CHEGADA em BBB acontece pela UZ1  -> rumo, sentido e aerovia da UZ1
+      - a SAÍDA   de BBB acontece pela UW2  -> restrições e altitudes da UW2
+
+    Guardar os dois registros elimina a ambiguidade sem precisar mutar os
+    objetos de entrada.
+    """
+    chegada: FixoRota
+    saida: FixoRota
+    nivel: int
+
+
+def _consolidar_pontos(fixos_rota: List[FixoRota], nivel_inicial: int, level_map: Dict[str, int]) -> List[_PontoDaRota]:
+    """
+    Converte a lista bruta de fixos (com duplicatas nas junções) em pontos únicos,
+    resolvendo também o nível de voo ativo em cada ponto.
+    """
+    pontos: List[_PontoDaRota] = []
+    nivel = nivel_inicial
+
+    for fixo in fixos_rota:
+        nivel = level_map.get(fixo.id, nivel)
+
+        if pontos and pontos[-1].chegada.id == fixo.id:
+            # Segunda ocorrência do mesmo fixo = junção de aerovias:
+            # este registro descreve a SAÍDA do ponto pela nova aerovia.
+            pontos[-1].saida = fixo
+            pontos[-1].nivel = nivel
+        else:
+            pontos.append(_PontoDaRota(chegada=fixo, saida=fixo, nivel=nivel))
+
+    return pontos
+
+
+def _conferir_sentido_da_aerovia(saida: FixoRota, chegada: FixoRota) -> bool:
+    """
+    Aerovias one-way: 'F' só pode ser voada na ordem crescente de seqno,
+    'B' só na decrescente. Retorna True se há restrição compatível com o
+    sentido voado (o que dispensa a checagem semicircular no segmento).
+    """
+    restricao = (saida.restriction or "").strip().upper()
+    if not restricao:
+        return False
+
+    voando_ao_contrario = chegada.is_reverse
+    if (voando_ao_contrario and restricao == 'F') or (not voando_ao_contrario and restricao == 'B'):
+        nome_sentido = 'Forward-only (F)' if restricao == 'F' else 'Backward-only (B)'
+        raise SentidoProibido(f"Erro em {saida.id}: Sentido Proibido na {saida.airway_ref}. Aerovia {nome_sentido}.")
+
+    return True
+
+
+def _conferir_regra_semicircular(rumo: float, nivel: int, fixo_id: str, regras: List[RegraCruzeiro]) -> None:
+    """
+    Regra semicircular: rumos 000°-179° exigem nível ÍMPAR, 180°-359° exigem PAR.
+    O dígito das dezenas do FL determina a paridade (F350 -> 35 -> ímpar).
+    """
+    nivel_e_impar = (nivel // 10) % 2 != 0
+    exige_impar = is_course_odd(regras, rumo)
+
+    if exige_impar and not nivel_e_impar:
+        raise NivelInvalidoParaRumo(f"Erro em {fixo_id}: Rumo {int(rumo)}° exige nível ÍMPAR (Tentado F{nivel}).")
+    if not exige_impar and nivel_e_impar:
+        raise NivelInvalidoParaRumo(f"Erro em {fixo_id}: Rumo {int(rumo)}° exige nível PAR (Tentado F{nivel}).")
+
+
 def validar_segmentos_rota(fixos_rota: List[FixoRota], nivel_inicial: int, level_map: Dict[str, int]) -> List[SegmentoValidado]:
     """
-    Recebe fixos puros (já extraídos do BD) e valida a rota inteira (direção, altitude, regras).
-    Retorna os segmentos validados da rota.
+    Recebe fixos puros (já extraídos do BD) e valida a rota inteira:
+    sentido da aerovia, altitude mínima e regra semicircular.
+
+    Função pura: não modifica os FixoRota recebidos; devolve os segmentos validados.
     """
-    if not fixos_rota:
-        return []
+    pontos = _consolidar_pontos(fixos_rota, nivel_inicial, level_map)
 
-    full_route_data = []
-    current_level = nivel_inicial
-    
-    for wp in fixos_rota:
-        if wp.id in level_map:
-            current_level = level_map[wp.id]
-        wp.active_level = current_level
-        
-        if not full_route_data or full_route_data[-1].id != wp.id:
-            full_route_data.append(wp)
-        else:
-            setattr(full_route_data[-1], '_next_wp_data', wp)
+    segmentos: List[SegmentoValidado] = []
+    for atual, proximo in zip(pontos, pontos[1:]):
+        saida = atual.saida        # regras para SAIR deste ponto
+        chegada = proximo.chegada  # dados da aerovia pela qual se CHEGA ao próximo
+        nivel = atual.nivel
 
-    segments = []
-    for i in range(len(full_route_data) - 1):
-        wp_raw = full_route_data[i]
-        nxt = full_route_data[i+1]
-        
-        wp = getattr(wp_raw, '_next_wp_data', wp_raw)
-        lvl = wp.active_level
+        # 1. Sentido da aerovia (one-way voada ao contrário derruba a rota aqui)
+        restricao_compativel = _conferir_sentido_da_aerovia(saida, chegada)
 
-        restr = wp.restriction
-        has_valid_restriction = False
-        if restr and restr.strip():
-            is_rev = nxt.is_reverse
-            if (is_rev and restr.upper() == 'F') or (not is_rev and restr.upper() == 'B'):
-                direction_name = 'Forward-only (F)' if restr.upper() == 'F' else 'Backward-only (B)'
-                raise SentidoProibido(f"Erro em {wp.id}: Sentido Proibido na {wp.airway_ref}. Aerovia {direction_name}.")
-            else:
-                has_valid_restriction = True
+        # 2. Altitude mínima do segmento (MEA, em pés no AIRAC; nível em FL)
+        if saida.altitude_minima and nivel < (saida.altitude_minima / 100):
+            raise NivelAbaixoDoMinimo(
+                f"Erro em {saida.id}: Nivel F{nivel} abaixo do minimo F{int(saida.altitude_minima / 100)} na {saida.airway_ref}."
+            )
 
-        if wp.min and lvl < (wp.min / 100):
-            raise NivelAbaixoDoMinimo(f"Erro em {wp.id}: Nivel F{lvl} abaixo do minimo F{int(wp.min/100)} na {wp.airway_ref}.")
+        # 3. Rumo do segmento + regra semicircular.
+        # O AIRAC publica o inbound_course no sentido "para frente" da aerovia;
+        # voando ao contrário (is_reverse), o rumo real é o recíproco (+180°).
+        rumo: Optional[float] = chegada.course
+        if not restricao_compativel and rumo is not None:
+            if chegada.is_reverse:
+                referencia = saida.course if saida.course is not None else rumo
+                rumo = (referencia + 180) % 360
+            _conferir_regra_semicircular(rumo, nivel, saida.id, chegada.regras_cruzeiro)
 
-        actual_course = nxt.course
-        if not has_valid_restriction:
-            course = nxt.course
-            if course is not None:
-                actual_course = course
-                if nxt.is_reverse:
-                    ref_course = wp.course if wp.course is not None else course
-                    if ref_course is not None:
-                        actual_course = (ref_course + 180) % 360
-                
-                is_odd = (lvl // 10) % 2 != 0
-                required_odd = is_course_odd(nxt.regras_cruzeiro, actual_course)
-                
-                if required_odd and not is_odd:
-                    raise NivelInvalidoParaRumo(f"Erro em {wp.id}: Rumo {int(actual_course)}° exige nível ÍMPAR (Tentado F{lvl}).")
-                elif not required_odd and is_odd:
-                    raise NivelInvalidoParaRumo(f"Erro em {wp.id}: Rumo {int(actual_course)}° exige nível PAR (Tentado F{lvl}).")
-
-        segments.append(SegmentoValidado(
-            from_waypoint=wp.id,
-            to_waypoint=nxt.id,
-            airway=nxt.airway_ref,
-            course=round(actual_course, 2) if actual_course is not None else None,
-            active_level=lvl,
-            min_altitude=wp.min,
-            max_altitude=wp.max
+        segmentos.append(SegmentoValidado(
+            from_waypoint=saida.id,
+            to_waypoint=chegada.id,
+            airway=chegada.airway_ref,
+            course=round(rumo, 2) if rumo is not None else None,
+            active_level=nivel,
+            min_altitude=saida.altitude_minima,
+            max_altitude=saida.altitude_maxima
         ))
 
-    return segments
+    return segmentos
 
 def calcular_distancia_e_rumo(lat1: float, lon1: float, lat2: float, lon2: float) -> dict:
     """

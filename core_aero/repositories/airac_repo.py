@@ -22,7 +22,22 @@ class AiracRepository:
             
         # Conexão em modo Read-Only para proteger o banco original
         self.conexao = sqlite3.connect(f"file:{caminho_db}?mode=ro", uri=True)
-        self.conexao.row_factory = sqlite3.Row 
+        self.conexao.row_factory = sqlite3.Row
+
+    # --- Ciclo de vida da conexão (protocolo de context manager) ---
+    # Uso recomendado:
+    #     with AiracRepository() as repo:
+    #         repo.buscar_aerodromo("SBGR")
+    # O bloco `with` garante o close() mesmo se uma exceção estourar no meio.
+
+    def close(self) -> None:
+        self.conexao.close()
+
+    def __enter__(self) -> "AiracRepository":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
 
     def buscar_aerodromo(self, icao: str) -> Aerodromo:
         cursor = self.conexao.cursor()
@@ -69,8 +84,8 @@ class AiracRepository:
             AerodromoPrincipal(
                 icao=row["airport_identifier"],
                 nome=row["airport_name"],
-                lat_deg=row["airport_ref_latitude"],
-                lon_deg=row["airport_ref_longitude"],
+                latitude=row["airport_ref_latitude"],
+                longitude=row["airport_ref_longitude"],
                 elevacao_ft=row["elevation"]
             )
             for row in cursor.fetchall()
@@ -170,8 +185,8 @@ class AiracRepository:
                 id=r["waypoint_identifier"],
                 is_reverse=is_reverse,
                 airway_ref=airway,
-                min=r["minimum_altitude1"],
-                max=r["maximum_altitude"],
+                altitude_minima=r["minimum_altitude1"],
+                altitude_maxima=r["maximum_altitude"],
                 course=r["inbound_course"],
                 restriction=r["direction_restriction"],
                 cruise_table=cruise_table,
@@ -202,8 +217,8 @@ class AiracRepository:
                 identifier=row["ndb_identifier"],
                 nome=row["ndb_name"] if row["ndb_name"] else "",
                 frequencia_khz=row["ndb_frequency"],
-                lat_deg=row["ndb_latitude"],
-                lon_deg=row["ndb_longitude"]
+                latitude=row["ndb_latitude"],
+                longitude=row["ndb_longitude"]
             )
             for row in cursor.fetchall()
         ]
@@ -231,8 +246,8 @@ class AiracRepository:
                 identifier=row["vor_identifier"],
                 nome=row["vor_name"] if row["vor_name"] else "",
                 frequencia_mhz=row["vor_frequency"],
-                lat_deg=row["vor_latitude"],
-                lon_deg=row["vor_longitude"]
+                latitude=row["vor_latitude"],
+                longitude=row["vor_longitude"]
             )
             for row in cursor.fetchall()
         ]
@@ -255,8 +270,8 @@ class AiracRepository:
             AuxilioFixo(
                 identifier=row["waypoint_identifier"],
                 usage=row["waypoint_usage"] if row["waypoint_usage"] else "",
-                lat_deg=row["waypoint_latitude"],
-                lon_deg=row["waypoint_longitude"]
+                latitude=row["waypoint_latitude"],
+                longitude=row["waypoint_longitude"]
             )
             for row in cursor.fetchall()
         ]
