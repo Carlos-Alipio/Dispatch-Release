@@ -87,40 +87,60 @@
     </div>
 
     <!-- Controle de Camadas (Layers) -->
-    <div class="absolute top-6 right-6 z-10 bg-slate-800 p-4 rounded-xl shadow-2xl border border-slate-700 text-white text-sm w-52">
+    <div
+        class="absolute top-6 right-6 z-10 bg-slate-800 p-4 rounded-xl shadow-2xl border border-slate-700 text-white text-sm w-52">
         <h3 class="font-bold mb-3 border-b border-slate-600 pb-2">Camadas do Mapa</h3>
         <div class="flex flex-col space-y-2">
+            <label class="flex items-center space-x-2 cursor-pointer border-b border-slate-600 pb-2 mb-2">
+                <input type="checkbox" id="toggle-nuvens"
+                    class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800"
+                    checked>
+                <span class="text-slate-300 hover:text-white transition-colors">Nuvens (Meteorologia)</span>
+            </label>
             <label class="flex items-center space-x-2 cursor-pointer">
-                <input type="checkbox" id="toggle-firs" class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800" checked>
+                <input type="checkbox" id="toggle-firs"
+                    class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800"
+                    checked>
                 <span class="text-slate-300 hover:text-white transition-colors">FIRs / UIRs</span>
             </label>
             <label class="flex items-center space-x-2 cursor-pointer">
-                <input type="checkbox" id="toggle-restritas" class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800" checked>
+                <input type="checkbox" id="toggle-restritas"
+                    class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800"
+                    checked>
                 <span class="text-slate-300 hover:text-white transition-colors">Áreas Restritas</span>
             </label>
             <label class="flex items-center space-x-2 cursor-pointer">
-                <input type="checkbox" id="toggle-aerovias" class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800" checked>
+                <input type="checkbox" id="toggle-aerovias"
+                    class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800"
+                    checked>
                 <span class="text-slate-300 hover:text-white transition-colors">Aerovias</span>
             </label>
             <label class="flex items-center space-x-2 cursor-pointer">
-                <input type="checkbox" id="toggle-aeroportos" class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800" checked>
+                <input type="checkbox" id="toggle-aeroportos"
+                    class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800"
+                    checked>
                 <span class="text-slate-300 hover:text-white transition-colors">Aeroportos</span>
             </label>
             <label class="flex items-center space-x-2 cursor-pointer">
-                <input type="checkbox" id="toggle-vors" class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800" checked>
+                <input type="checkbox" id="toggle-vors"
+                    class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800"
+                    checked>
                 <span class="text-slate-300 hover:text-white transition-colors">VORs</span>
             </label>
             <label class="flex items-center space-x-2 cursor-pointer">
-                <input type="checkbox" id="toggle-ndbs" class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800" checked>
+                <input type="checkbox" id="toggle-ndbs"
+                    class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800"
+                    checked>
                 <span class="text-slate-300 hover:text-white transition-colors">NDBs</span>
             </label>
             <label class="flex items-center space-x-2 cursor-pointer">
-                <input type="checkbox" id="toggle-fixos" class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800" checked>
+                <input type="checkbox" id="toggle-fixos"
+                    class="form-checkbox h-4 w-4 text-blue-500 rounded bg-slate-700 border-slate-500 focus:ring-offset-slate-800"
+                    checked>
                 <span class="text-slate-300 hover:text-white transition-colors">Fixos / Waypoints</span>
             </label>
         </div>
     </div>
-
 
     <!-- Container do Mapa WebGL -->
     <main class="flex-grow relative">
@@ -136,7 +156,28 @@
             zoom: 4
         });
 
-        map.on('load', () => {
+        map.on('load', async () => {
+            // --- NUVENS METEOROLÓGICAS (OPENWEATHERMAP) ---
+            map.addSource('owm-clouds', {
+                type: 'raster',
+                tiles: [
+                    'https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=7967a64f1dd8c483f54a358e3ab15961'
+                ],
+                tileSize: 256,
+                maxzoom: 8
+            });
+
+            // Omitir o beforeId aqui (como é a primeira a ser declarada) fará com que ela fique
+            // no fundo (estruturalmente antes de aerovias, waypoints e aeródromos).
+            map.addLayer({
+                id: 'layer-nuvens',
+                type: 'raster',
+                source: 'owm-clouds',
+                paint: {
+                    'raster-opacity': 0.8
+                }
+            });
+
             // Fonte de dados estática da Camada 2 - apontando direto para a URL da API
             map.addSource('airac-aerodromos', {
                 type: 'geojson',
@@ -354,7 +395,7 @@
                     'line-color': [
                         'match',
                         ['get', 'tipo'],
-                        'P', '#ef4444', 
+                        'P', '#ef4444',
                         'R', '#d946ef',
                         'D', '#f97316',
                         'W', '#f59e0b',
@@ -391,11 +432,11 @@
                 source: 'airac-firs',
                 minzoom: 2,
                 paint: {
-                    'line-color': '#1e293b', 
+                    'line-color': '#1e293b',
                     'line-width': 1.5,
                     'line-dasharray': [4, 2]
                 }
-            }, 'camada-restritas-fill'); 
+            }, 'camada-restritas-fill');
 
             map.addLayer({
                 id: 'camada-firs-nome',
@@ -409,7 +450,7 @@
                     'symbol-placement': 'point'
                 },
                 paint: {
-                    'text-color': '#475569', 
+                    'text-color': '#475569',
                     'text-halo-color': '#f8fafc',
                     'text-halo-width': 2
                 }
@@ -535,6 +576,9 @@
 
             document.getElementById('toggle-firs').addEventListener('change', (e) => {
                 toggleLayerVisibility(['camada-firs-line', 'camada-firs-nome'], e.target.checked);
+            });
+            document.getElementById('toggle-nuvens').addEventListener('change', (e) => {
+                toggleLayerVisibility(['layer-nuvens'], e.target.checked);
             });
             document.getElementById('toggle-restritas').addEventListener('change', (e) => {
                 toggleLayerVisibility(['camada-restritas-fill', 'camada-restritas-line', 'camada-restritas-nome'], e.target.checked);
