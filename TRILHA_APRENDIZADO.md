@@ -37,12 +37,14 @@ O projeto segue **Clean Architecture** em 4 camadas, com dependências apontando
 ┌────────────────────────────────────────────────────────────┐
 │ API — core_aero/api.py (Django Ninja + Pydantic)           │
 │ /api/rotas/*, /api/v1/geo/airac/* → serializa em GeoJSON   │
+│ Exception handlers: erros de domínio → HTTP 404/422/503    │
 └────────────────────────────────────────────────────────────┘
                         ↑ chamadas ↓
 ┌────────────────────────────────────────────────────────────┐
 │ DOMÍNIO — core_aero/domain/                                │
 │ entidades.py (dataclasses) + planejamento.py (funções      │
 │ puras: parsing de rota, validação, Haversine, rumos)       │
+│ excecoes.py (hierarquia de erros de negócio)               │
 └────────────────────────────────────────────────────────────┘
                         ↑ objetos de domínio ↓
 ┌────────────────────────────────────────────────────────────┐
@@ -70,14 +72,18 @@ O projeto segue **Clean Architecture** em 4 camadas, com dependências apontando
 |---|---|---|
 | Python | 3.14 | Linguagem do backend |
 | Django | 6.0.6 | Framework web: settings, URLs, servidor de dev, templates |
-| Django Ninja | 1.6.2 | Framework REST: decorators de endpoint, integração Pydantic |
-| Pydantic | 2.x | Schemas de validação de entrada/saída da API |
+| Django Ninja | 1.6.2 | Framework REST: decorators de endpoint, exception handlers, integração Pydantic |
+| Pydantic | 2.13 | Schemas de validação de entrada/saída da API |
+| python-dotenv | 1.2 | Carrega segredos/configuração do `.env` para o ambiente |
 | SQLite | 3 | Banco AIRAC estático (`core_aero/data/airac/airac_atual.s3db`, modo `?mode=ro`) |
+| pytest / pytest-django | 9.1 / 4.12 | Suíte de testes (`core_aero/tests/`, config em `pytest.ini`) |
+| gunicorn | 26 | Servidor WSGI de produção (usado no `Dockerfile`) |
+| Docker / GitHub Actions | — | Empacotamento reprodutível e CI rodando os testes a cada push |
 | MapLibre GL JS | 4.1.3 | Mapa WebGL: sources, layers, filtros, ícones SVG |
 | TailwindCSS | 4 (CDN) | Estilização utility-first do cockpit |
 | JavaScript (ES6+) | — | Lógica do frontend: `fetch`, async/await, manipulação de camadas |
 | GeoJSON | RFC 7946 | Formato de troca API → mapa (atenção: ordem `[lon, lat]`) |
-| OpenWeatherMap | tiles | Camada raster de precipitação em tempo real |
+| OpenWeatherMap | tiles | Camada raster de precipitação (chave injetada via `.env`, nunca no código) |
 | CartoDB Positron | style | Mapa-base (style JSON público) |
 
 ### 1.4 Pontos fortes do código atual
@@ -91,6 +97,17 @@ O projeto segue **Clean Architecture** em 4 camadas, com dependências apontando
 - **Type hints em todo o backend** e schemas Pydantic na borda da API.
 - **Cache HTTP consciente do domínio**: dados AIRAC estáticos com `max-age` de 28 dias
   (a duração de um ciclo AIRAC).
+- **Suíte de testes automatizada** (41 testes em `core_aero/tests/`): funções puras do
+  domínio, mapeamento de erros na API (com repositório fake) e integração com o banco
+  AIRAC real — estes últimos pulados automaticamente onde o banco não existe.
+- **Exceções de domínio semânticas** (`core_aero/domain/excecoes.py`) mapeadas para
+  HTTP por exception handlers do Ninja — a API não inspeciona mensagens de erro.
+- **Configuração pelo ambiente**: segredos no `.env` (fora do git), `.env.example`
+  documentando as variáveis; com `DEBUG=False`, a ausência de `DJANGO_SECRET_KEY`
+  impede o boot de propósito.
+- **Logging estruturado** (timestamp, nível, módulo) configurado no `settings.py`.
+- **Docker + CI**: imagem com gunicorn e workflow do GitHub Actions rodando os
+  testes a cada push/PR.
 
 ### 1.5 Lacunas (que a trilha aborda no Módulo 8)
 
@@ -134,6 +151,8 @@ consolidam tudo.
 - `core_aero/domain/entidades.py` — 12 dataclasses puras.
 - `core_aero/domain/planejamento.py` — funções tipadas com tuplas aninhadas no retorno,
   ex.: `extrair_instrucoes_rota(...) -> Tuple[List[Tuple[str, str, str]], Dict[str, int]]`.
+- `core_aero/domain/excecoes.py` — exemplo didático de herança: uma hierarquia de
+  exceções customizadas com docstrings explicando o propósito de cada classe.
 
 **Exercício:** reescreva `Coordenada` e `Aerodromo` do zero e crie uma função tipada
 que converta graus decimais em graus/minutos/segundos.
@@ -171,10 +190,15 @@ todos os VORs do Brasil com frequência e coordenadas. Depois compare com `busca
 - **Pydantic 2**: `Schema`/`BaseModel`, validação automática, serialização.
 
 **No projeto:**
-- `aero_saas/settings.py` e `aero_saas/urls.py` — configuração mínima do Django.
+- `aero_saas/settings.py` — configuração via variáveis de ambiente (`python-dotenv`),
+  `ALLOWED_HOSTS`, bloco `LOGGING`; compare com o `.env.example`.
 - `core_aero/api.py` — 10 endpoints; observe como `calcular_rota_geojson_completo()`
   recebe query params (`route_string`, `initial_level`) e como os endpoints
   `/v1/geo/airac/*` setam cache de 28 dias no `HttpResponse`.
+- Ainda em `api.py`, os `@api.exception_handler(...)` no topo: é ali que exceções de
+  domínio viram status HTTP (404/422/503) sem `try/except` espalhado pelos endpoints.
+- `cockpit_ui()` — repare que o template é renderizado com `render()` para injetar
+  `settings.OWM_API_KEY`; o segredo nunca fica no HTML versionado.
 
 **Exercício:** adicione um endpoint `GET /api/v1/geo/airac/aerodromos/{icao}/vizinhos`
 que retorne aeródromos num raio de N milhas náuticas, com schema Pydantic próprio.
@@ -245,7 +269,10 @@ especificação GeoJSON ([RFC 7946](https://datatracker.ietf.org/doc/html/rfc794
 - `buscar_variacao_magnetica()` em `airac_repo.py` — variação vinda do banco AIRAC.
 
 **Exercício:** reimplemente `calcular_distancia_e_rumo()` do zero, sem olhar o original,
-e compare os resultados para 5 pares de aeródromos conhecidos (ex.: SBGR→SBGL).
+e valide contra a suíte existente: os testes em
+`core_aero/tests/test_planejamento.py` já trazem valores de referência
+(1° de longitude no equador ≈ 60 NM; SBGR→SBGL ≈ 180 NM) — aponte-os para a sua
+implementação e veja se passam.
 
 **Recursos:** [Movable Type — Calculating distance/bearing](https://www.movable-type.co.uk/scripts/latlong.html)
 (referência clássica das fórmulas), ICAO Annex 2 (regra semicircular), documentação ARINC 424.
@@ -264,6 +291,10 @@ e compare os resultados para 5 pares de aeródromos conhecidos (ex.: SBGR→SBGL
 - Note que `domain/` não importa Django nem sqlite3 — abra os imports e confira.
 - `AiracRepository` devolve dataclasses (`FixoRota`, `AreaFir`), nunca rows crus.
 - A API é a única camada que conhece HTTP e GeoJSON; o domínio não sabe que existe web.
+- As exceções seguem a mesma regra: o domínio levanta `RotaInvalida` sem saber o que
+  é um status 422 — quem traduz para HTTP é o handler na borda (`api.py`).
+- Os testes espelham as camadas: os de domínio não precisam de nada, os de API usam
+  fakes no lugar do repositório, e só os de repositório tocam o banco real.
 - O arquivo `SYSTEM_PROMPT.md` na raiz documenta as regras de arquitetura do projeto.
 
 **Exercício:** desenhe (papel mesmo) o diagrama de dependências entre os módulos do
@@ -274,41 +305,71 @@ projeto e verifique que nenhuma seta aponta "para fora" do domínio.
 
 ### Módulo 8 — Boas práticas e profissionalização (4–6 semanas, aplicado a este repo)
 
-Este módulo transforma as lacunas reais do projeto em exercícios. Ordem sugerida:
+As lacunas originais do projeto **já foram corrigidas no próprio repositório** — o que
+transforma este módulo num estudo guiado: para cada prática, leia a implementação real,
+entenda o porquê e depois faça o exercício de extensão.
 
 1. **Testes (a maior prioridade)** — pytest.
-   - Comece pelas funções puras: `extrair_instrucoes_rota`, `is_course_odd`,
-     `calcular_distancia_e_rumo` (elas não precisam de banco nem de Django).
-   - Depois, testes do repositório contra um SQLite pequeno de fixture.
-   - Por fim, testes de endpoint com o `TestClient` do Django Ninja.
-   - Conceitos: arrange/act/assert, fixtures, parametrização, casos de borda
-     (rota vazia, aerovia inexistente, antípodas no Haversine).
+   - **Estude**: `core_aero/tests/test_planejamento.py` (funções puras, parametrização
+     com `@pytest.mark.parametrize`, `pytest.raises`), `test_api.py` (fakes via
+     `monkeypatch`, fixtures `client` e `settings` do pytest-django) e
+     `test_airac_repo.py` (integração com `pytest.mark.skipif` quando o banco não existe).
+   - **Conceitos**: arrange/act/assert, fixtures, parametrização, teste de contrato
+     HTTP, por que funções puras são as mais fáceis de testar.
+   - **Exercício**: adicione casos de borda que ainda faltam — antípodas no Haversine,
+     rota com fixo repetido, `maximum_altitude` (hoje ninguém valida o teto). Rode
+     `pytest -v` e veja o novo teste falhar antes de implementar (TDD).
 
-2. **Segredos e configuração** — variáveis de ambiente.
-   - Mover `SECRET_KEY`, `DEBUG` e a chave do OpenWeatherMap para um `.env`
-     (`django-environ` ou `os.environ`), adicionar `.env` ao `.gitignore`
-     e **revogar/regenerar a chave OWM exposta**.
-   - A chave do frontend pode ser injetada no template pelo backend.
+2. **Segredos e configuração pelo ambiente.**
+   - **Estude**: o trio `aero_saas/settings.py` (leitura com `os.environ` +
+     `load_dotenv`), `.env.example` (documentação das variáveis) e `.gitignore`
+     (o `.env` real nunca é versionado). Note o comportamento fail-fast: com
+     `DEBUG=False` sem `DJANGO_SECRET_KEY`, o processo se recusa a subir.
+   - **Atenção**: a chave OWM antiga ficou no histórico público do git — segredo
+     vazado se revoga, não basta apagar do código. Gere outra em
+     home.openweathermap.org/api_keys e atualize seu `.env`.
+   - **Exercício**: adicione uma variável nova (ex.: `MAPA_CENTRO_INICIAL`) percorrendo
+     o caminho completo: `.env.example` → settings → `render()` → template.
 
 3. **Tratamento de erros e logging.**
-   - Exceções customizadas no domínio (ex.: `AeroviaNaoEncontrada`,
-     `NivelInvalido`) mapeadas para respostas HTTP 404/422 na API.
-   - Módulo `logging` do Python com configuração no `settings.py`.
+   - **Estude**: `core_aero/domain/excecoes.py` (a hierarquia e o docstring com o
+     mapeamento para HTTP) e os `@api.exception_handler(...)` em `core_aero/api.py`.
+     Compare com o `git log`: antes, cada endpoint tinha `try/except Exception`
+     devolvendo 400 para tudo.
+   - **Estude** o bloco `LOGGING` em `settings.py`; suba o servidor, force um erro
+     (`/api/aerodromos/ZZZZ`) e observe o log com timestamp/nível/módulo.
+   - **Exercício**: crie `AeroviaNaoEncontrada` (subclasse de `RecursoNaoEncontrado`)
+     e use-a em `buscar_fixos_aerovia` no lugar de `FixoNaoEncontrado` quando a
+     aerovia inteira não existir — com teste cobrindo o novo caso.
 
 4. **Higiene de dependências.**
-   - Remover folium/branca/requests/numpy do `requirements.txt` (não são usados)
-     e fixar versões. Conhecer `pip freeze` vs arquivo curado; opcional: `uv` ou `pip-tools`.
+   - **Estude**: `requirements.txt` (curado, só dependências diretas e pinadas) vs
+     `requirements-dev.txt` (herda com `-r` e soma as de teste). Antes havia 20 pacotes
+     congelados com `pip freeze`, incluindo folium/requests/numpy sem nenhum uso.
+   - **Exercício**: rode `pip install -r requirements-dev.txt` num venv limpo e
+     confirme que `pytest` passa — é o mesmo caminho que o CI executa.
 
 5. **Git profissional.**
-   - Mensagens no padrão Conventional Commits (`feat:`, `fix:`, `refactor:` — os
-     commits recentes do projeto já seguem isso; os antigos "." mostram o contraste).
-   - Branches, PRs e revisão de código, mesmo trabalhando sozinho.
+   - **Estude**: `.gitmessage` (template de Conventional Commits, já ativado via
+     `git config commit.template`) e `CONTRIBUTING.md`. Os commits antigos com "."
+     ficaram no histórico como contraexemplo — reescrever histórico publicado é
+     destrutivo e não vale o risco.
+   - **Exercício**: faça sua próxima mudança em um branch, com commit `feat:`/`fix:`
+     bem descrito, e abra um PR mesmo trabalhando sozinho — o CI vai rodar nele.
 
-6. **Docker e CI (introdução).**
-   - Dockerfile simples para o app; GitHub Actions rodando os testes a cada push.
+6. **Docker e CI.**
+   - **Estude**: `Dockerfile` (imagem slim, gunicorn, e por que o banco AIRAC de
+     173 MB entra por volume em vez de ser copiado), `.dockerignore` e
+     `.github/workflows/ci.yml` (os testes de integração pulam sozinhos no CI
+     porque o banco não está lá — repare como o skipif viabiliza isso).
+   - **Exercício**: `docker build -t dispatch-release .` e rode com
+     `--env-file .env` montando o volume do AIRAC; depois adicione um job de lint
+     (ruff) ao workflow.
 
 7. **Deploy (visão geral).**
-   - `DEBUG=False`, `ALLOWED_HOSTS`, servir estáticos (whitenoise), gunicorn/uvicorn.
+   - O que ainda falta para produção de verdade: `DEBUG=False` com domínio real em
+     `DJANGO_ALLOWED_HOSTS`, servir estáticos (whitenoise/CDN), HTTPS, e um processo
+     de atualização do ciclo AIRAC a cada 28 dias.
 
 **Recursos:** [docs.pytest.org](https://docs.pytest.org), "Boas práticas" do
 [12factor.net/pt_br](https://12factor.net/pt_br/), [conventionalcommits.org](https://www.conventionalcommits.org/pt-br/),
@@ -321,12 +382,13 @@ documentação do GitHub Actions.
 | Fase | Módulos | Marco de conclusão |
 |---|---|---|
 | Base | 1, 2 | Ler `planejamento.py` e `airac_repo.py` inteiros e entender cada linha |
-| Backend | 3 | Criar um endpoint novo funcional na API |
+| Backend | 3 | Criar um endpoint novo funcional na API, com teste |
 | Frontend + Mapa | 4, 5 | Adicionar uma camada nova ao cockpit de ponta a ponta |
-| Domínio | 6 | Reimplementar Haversine/rumos e validar contra o original |
-| Consolidação | 7, 8 | Suíte de testes rodando em CI, segredos fora do código |
+| Domínio | 6 | Reimplementar Haversine/rumos e passar na suíte de testes existente |
+| Consolidação | 7, 8 | Explicar cada correção do Módulo 8 com suas palavras; primeiro PR com CI verde |
 
 **Princípio geral da trilha:** estude o conceito → encontre-o neste código →
-modifique algo pequeno → quebre e conserte. Este repositório é pequeno o bastante
-(~2.000 linhas) para ser lido por completo, e real o bastante para ensinar o processo
-inteiro de criação de uma aplicação web geoespacial.
+modifique algo pequeno → rode `pytest` → quebre e conserte. Este repositório é
+pequeno o bastante (~2.500 linhas, testes incluídos) para ser lido por completo, e
+real o bastante para ensinar o processo inteiro de criação de uma aplicação web
+geoespacial — incluindo as práticas profissionais que o cercam.
