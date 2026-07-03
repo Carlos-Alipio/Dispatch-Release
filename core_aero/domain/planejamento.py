@@ -2,6 +2,7 @@ import re
 import math
 from typing import List, Tuple, Dict
 from core_aero.domain.entidades import FixoRota, SegmentoValidado, RegraCruzeiro
+from core_aero.domain.excecoes import SentidoProibido, NivelAbaixoDoMinimo, NivelInvalidoParaRumo
 
 def extrair_instrucoes_rota(route_string: str, nivel_inicial: int) -> Tuple[List[Tuple[str, str, str]], Dict[str, int]]:
     """
@@ -79,12 +80,12 @@ def validar_segmentos_rota(fixos_rota: List[FixoRota], nivel_inicial: int, level
             is_rev = nxt.is_reverse
             if (is_rev and restr.upper() == 'F') or (not is_rev and restr.upper() == 'B'):
                 direction_name = 'Forward-only (F)' if restr.upper() == 'F' else 'Backward-only (B)'
-                raise ValueError(f"Erro em {wp.id}: Sentido Proibido na {wp.airway_ref}. Aerovia {direction_name}.")
+                raise SentidoProibido(f"Erro em {wp.id}: Sentido Proibido na {wp.airway_ref}. Aerovia {direction_name}.")
             else:
                 has_valid_restriction = True
 
         if wp.min and lvl < (wp.min / 100):
-            raise ValueError(f"Erro em {wp.id}: Nivel F{lvl} abaixo do minimo F{int(wp.min/100)} na {wp.airway_ref}.")
+            raise NivelAbaixoDoMinimo(f"Erro em {wp.id}: Nivel F{lvl} abaixo do minimo F{int(wp.min/100)} na {wp.airway_ref}.")
 
         actual_course = nxt.course
         if not has_valid_restriction:
@@ -100,9 +101,9 @@ def validar_segmentos_rota(fixos_rota: List[FixoRota], nivel_inicial: int, level
                 required_odd = is_course_odd(nxt.regras_cruzeiro, actual_course)
                 
                 if required_odd and not is_odd:
-                    raise ValueError(f"Erro em {wp.id}: Rumo {int(actual_course)}° exige nível ÍMPAR (Tentado F{lvl}).")
+                    raise NivelInvalidoParaRumo(f"Erro em {wp.id}: Rumo {int(actual_course)}° exige nível ÍMPAR (Tentado F{lvl}).")
                 elif not required_odd and is_odd:
-                    raise ValueError(f"Erro em {wp.id}: Rumo {int(actual_course)}° exige nível PAR (Tentado F{lvl}).")
+                    raise NivelInvalidoParaRumo(f"Erro em {wp.id}: Rumo {int(actual_course)}° exige nível PAR (Tentado F{lvl}).")
 
         segments.append(SegmentoValidado(
             from_waypoint=wp.id,

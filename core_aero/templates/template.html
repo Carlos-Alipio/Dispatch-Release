@@ -161,7 +161,7 @@
             map.addSource('owm-clouds', {
                 type: 'raster',
                 tiles: [
-                    'https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=7967a64f1dd8c483f54a358e3ab15961'
+                    'https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid={{ owm_api_key }}'
                 ],
                 tileSize: 256,
                 maxzoom: 8

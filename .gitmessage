@@ -1,0 +1,12 @@
+# <tipo>: <resumo no imperativo, até ~70 caracteres>
+#
+# Tipos (Conventional Commits):
+#   feat:     nova funcionalidade
+#   fix:      correção de bug
+#   refactor: mudança de código sem alterar comportamento
+#   test:     adição/ajuste de testes
+#   docs:     documentação
+#   chore:    manutenção (deps, config, CI)
+#   style:    formatação, sem mudança de lógica
+#
+# Corpo (opcional): explique O QUÊ e POR QUÊ, não o como.

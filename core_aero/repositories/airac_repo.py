@@ -1,16 +1,24 @@
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Optional, List
 from core_aero.domain.entidades import Aerodromo, AerodromoPrincipal, Coordenada, FixoRota, RegraCruzeiro, AuxilioNDB, AuxilioVOR, AuxilioFixo, AeroviaLinha, AreaRestrita, AreaFir
+from core_aero.domain.excecoes import BaseAiracIndisponivel, AerodromoNaoEncontrado, FixoNaoEncontrado
 import math
+
+logger = logging.getLogger(__name__)
+
+# Ancorado ao pacote para não depender do diretório de onde o processo foi iniciado
+DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "airac"
 
 class AiracRepository:
     def __init__(self, ciclo: str = "atual"):
         # Aponta para o arquivo: core_aero/data/airac/airac_atual.s3db
-        caminho_db = Path(f"core_aero/data/airac/airac_{ciclo}.s3db")
-        
+        caminho_db = DATA_DIR / f"airac_{ciclo}.s3db"
+
         if not caminho_db.exists():
-            raise FileNotFoundError(f"Arquivo AIRAC não encontrado: {caminho_db}")
+            logger.error("Banco AIRAC ausente: %s", caminho_db)
+            raise BaseAiracIndisponivel(f"Arquivo AIRAC não encontrado: {caminho_db}")
             
         # Conexão em modo Read-Only para proteger o banco original
         self.conexao = sqlite3.connect(f"file:{caminho_db}?mode=ro", uri=True)
@@ -33,7 +41,7 @@ class AiracRepository:
         
         linha = cursor.fetchone()
         if not linha:
-            raise ValueError(f"Aeródromo {icao} não encontrado no ciclo AIRAC atual.")
+            raise AerodromoNaoEncontrado(f"Aeródromo {icao} não encontrado no ciclo AIRAC atual.")
             
         return Aerodromo(
             icao=linha["airport_identifier"],
@@ -139,7 +147,7 @@ class AiracRepository:
         end_row = cursor.fetchone()
 
         if not start_row or not end_row:
-            raise ValueError(f"Fixo {start_wp_clean if not start_row else end_wp_clean} nao encontrado na {airway}.")
+            raise FixoNaoEncontrado(f"Fixo {start_wp_clean if not start_row else end_wp_clean} nao encontrado na {airway}.")
 
         start_seq, end_seq = start_row["seqno"], end_row["seqno"]
         is_reverse = start_seq > end_seq

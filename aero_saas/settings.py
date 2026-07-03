@@ -10,22 +10,45 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Carrega variáveis do arquivo .env na raiz do projeto (se existir).
+# Em produção (Docker, CI), as variáveis vêm do ambiente do processo.
+load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-k0&jw!nekk=@49$lfh5=mxw048ru7e6^q6h3kczceew5@e1qt%'
+# O fallback inseguro só existe para desenvolvimento local; com DEBUG=False
+# a ausência de DJANGO_SECRET_KEY derruba o processo de propósito.
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() in ("1", "true", "yes")
 
-ALLOWED_HOSTS = []
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "django-insecure-apenas-para-desenvolvimento-local"
+    else:
+        raise RuntimeError("DJANGO_SECRET_KEY é obrigatória quando DEBUG=False.")
+
+ALLOWED_HOSTS = [
+    h.strip()
+    for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if h.strip()
+]
+
+# Chave do OpenWeatherMap (camada de precipitação do mapa).
+# Obtenha a sua em https://openweathermap.org/api e defina no .env.
+OWM_API_KEY = os.environ.get("OWM_API_KEY", "")
 
 
 # Application definition
@@ -116,3 +139,32 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+
+# Logging
+# https://docs.djangoproject.com/en/6.0/topics/logging/
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "padrao": {
+            "format": "{asctime} {levelname} [{name}] {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "padrao",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": os.environ.get("LOG_LEVEL", "INFO"),
+    },
+    "loggers": {
+        # Silencia o autoreload e requests de estáticos em dev, mantendo o resto
+        "django.utils.autoreload": {"level": "WARNING"},
+    },
+}
