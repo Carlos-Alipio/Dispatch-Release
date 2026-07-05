@@ -65,7 +65,6 @@ class _PontoDaRota:
     saida: FixoRota
     nivel: int
 
-
 def _consolidar_pontos(fixos_rota: List[FixoRota], nivel_inicial: int, level_map: Dict[str, int]) -> List[_PontoDaRota]:
     """
     Converte a lista bruta de fixos (com duplicatas nas junções) em pontos únicos,
@@ -87,7 +86,6 @@ def _consolidar_pontos(fixos_rota: List[FixoRota], nivel_inicial: int, level_map
 
     return pontos
 
-
 def _conferir_sentido_da_aerovia(saida: FixoRota, chegada: FixoRota) -> bool:
     """
     Aerovias one-way: 'F' só pode ser voada na ordem crescente de seqno,
@@ -105,7 +103,6 @@ def _conferir_sentido_da_aerovia(saida: FixoRota, chegada: FixoRota) -> bool:
 
     return True
 
-
 def _conferir_regra_semicircular(rumo: float, nivel: int, fixo_id: str, regras: List[RegraCruzeiro]) -> None:
     """
     Regra semicircular: rumos 000°-179° exigem nível ÍMPAR, 180°-359° exigem PAR.
@@ -118,7 +115,6 @@ def _conferir_regra_semicircular(rumo: float, nivel: int, fixo_id: str, regras: 
         raise NivelInvalidoParaRumo(f"Erro em {fixo_id}: Rumo {int(rumo)}° exige nível ÍMPAR (Tentado F{nivel}).")
     if not exige_impar and nivel_e_impar:
         raise NivelInvalidoParaRumo(f"Erro em {fixo_id}: Rumo {int(rumo)}° exige nível PAR (Tentado F{nivel}).")
-
 
 def validar_segmentos_rota(fixos_rota: List[FixoRota], nivel_inicial: int, level_map: Dict[str, int]) -> List[SegmentoValidado]:
     """
